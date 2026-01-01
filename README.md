@@ -104,6 +104,7 @@ Planned features:
 * Expanded device list for downloads
 * Device status panel
 * SHA256 verification
+* Resuming partial downloads (.part)
 * macOS support
 
 ---
