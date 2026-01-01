@@ -105,6 +105,10 @@ def nightly_builds(device: str) -> list[dict]:
     return builds
 
 
+def latest_vbmeta_via_mirrorbits(device: str, *, max_tries: int = 12) -> dict:
+    return _find_mirrorbits_artifact(device, "vbmeta.img", max_tries=max_tries)
+
+
 def latest_nightly(device: str) -> dict:
     return nightly_builds(device)[0]
 
@@ -292,15 +296,13 @@ DEVICES = (
     ("Xiaomi", "POCO F1", "beryllium"),
     ("Xiaomi", "POCO X3 NFC", "surya"),
     ("Xiaomi", "POCO X3 Pro", "vayu"),
-    ("Xiaomi", "K60 Pro", "socrates"),
+    ("Xiaomi", "Redmi K60 Pro", "socrates"),
     ("Xiaomi", "Redmi 7 Pro", "violet"),
     ("Xiaomi", "Redmi Note 10 Pro (Global)", "sweet"),
     ("Nothing", "Phone (1)", "Spacewar"),
     ("Nothing", "Phone (2)", "Pong"),
     ("Asus", "ASUS Zenfone 5Z (ZS620KL)", "Z01R"),
     ("Asus", "ZenFone 8", "sake"),
-    ("Lenovo", "Z5 Pro 5G", "heart"),
-    ("Lenovo", "Z6 Pro", "zippo"),
     ("Motorola", "defy 2021", "bathena"),
     ("Motorola", "edge 20", "berlin"),
     ("Motorola", "edge 20 pro", "pstar"),
@@ -333,19 +335,66 @@ DEVICES = (
     ("Nokia", "Nokia 8", "NB1"),
     ("Realme", "Realme 10 Pro 5G", "luigi"),
     ("SHIFT", "SHIFT6mq", "axolotl"),
+    ("Essential", "PH-1", "mata"),
+    ("F(x)tec", "Pro¹", "pro1"),
+    ("F(x)tec", "Pro¹ X", "pro1x"),
+    ("Lenovo", "Z5 Pro GT", "heart"),
+    ("Lenovo", "Z6 Pro", "zippo"),
+    ("LG", "ThinQ (G710N)", "g710n"),
+    ("LG", "G7 ThinQ (G710ULM/VMX)", "g710ulm"),
+    ("LG", "Style3", "style3lm"),
+    ("LG", "V30 (Japan)", "l01k"),
+    ("LG", "V35 ThinQ", "judyp"),
+    ("LG", "V40 ThinQ", "judypn"),
+    ("LG", "V60 ThinQ", "timelm"),
+    ("LG", "Velvet", "caymanslm"),
+    ("Nubia", "Mini 5G", "TP1803"),
+    ("Nubia", "RedMagic Mars", "nx619j"),
+    ("Nubia", "X", "nx616j"),
+    ("Nubia", "Z17", "nx563j"),
+    ("Nubia", "Z18", "nx606j"),
+    ("Razer", "Phone", "cheryl"),
+    ("Razer", "Phone 2", "aura"),
+    ("Solana", "Saga", "ingot"),
+    ("Sony", "Xperia 1 II", "pdx203"),
+    ("Sony", "Xperia 1 III", "pdx215"),
+    ("Sony", "Xperia 1 V", "pdx234"),
+    ("Sony", "Xperia 10", "kirin"),
+    ("Sony", "Xperia 10 IV", "pdx225"),
+    ("Sony", "Xperia 10 Plus", "mermaid"),
+    ("Sony", "Xperia 10 V", "pdx235"),
+    ("Sony", "Xperia 5 II", "pdx206"),
+    ("Sony", "Xperia 5 III", "pdx214"),
+    ("Sony", "Xperia 5 V", "pdx237"),
+    ("Sony", "Xperia XA2", "pioneer"),
+    ("Sony", "Xperia XA2 Plus", "voyager"),
+    ("Sony", "Xperia XA2 Ultra", "discovery"),
+    ("Sony", "Xperia XZ2", "akari"),
+    ("Sony", "Xperia XZ2 Compact", "xz2c"),
+    ("Sony", "Xperia XZ2 Premium", "aurora"),
+    ("Sony", "Xperia XZ3", "akatsuki"),
+    ("ZTE", "Axon 9 Pro", "akershus"),
 )
 
 BRANDS = [
-    "Samsung",
     "Google",
+    "Samsung",
     "OnePlus",
     "Xiaomi",
     "Nothing",
+    "Sony",
     "Asus",
     "Motorola",
     "Nokia",
     "SHIFT",
     "Realme",
+    "Lenovo",
+    "LG",
+    "Nubia",
+    "Razer",
+    "Essential",
+    "Solana",
+    "ZTE",
 ]
 
 MODELS_BY_BRAND: dict[str, list[str]] = {b: [] for b in BRANDS}
