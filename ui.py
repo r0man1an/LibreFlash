@@ -1,4 +1,3 @@
-# ui.py
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +21,7 @@ from logic import (
     get_suggestions,
     latest_nightly,
     latest_recovery_or_boot_for_device,
+    latest_vbmeta_via_mirrorbits,
 )
 
 sg.theme("DarkGrey13")
@@ -79,6 +79,7 @@ def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
     if not base:
         return None, None
 
+    # Explicitly deny common dangerous partitions (including vbmeta)
     if base.endswith(".img"):
         for pfx in _DENY_PREFIXES:
             if base.startswith(pfx) and base.endswith(".img"):
@@ -192,11 +193,13 @@ def make_manual_tab():
         pad=(0, 8),
     )
 
+    # Note: keeping a simple row; Back is always last (right-most).
     buttons_row = sg.Column(
         [
             [
                 sg.Button("Download ROM", key="-DL_ROM-", size=(14, 1)),
                 sg.Button("Download Recovery", key="-DL_RECOVERY-", size=(18, 1)),
+                sg.Button("Download VBMETA", key="-DL_VBMETA-", size=(16, 1), visible=False),
                 sg.Button("Back", key="-BACK-", size=(10, 1)),
             ]
         ],
@@ -258,10 +261,7 @@ def make_download_view():
         [sg.VPush()],
         [
             sg.TabGroup(
-                [[
-                    sg.Tab("Manual", manual_tab, font=TAB_FONT),
-                    sg.Tab("Auto", auto_tab, font=TAB_FONT),
-                ]],
+                [[sg.Tab("Manual", manual_tab, font=TAB_FONT), sg.Tab("Auto", auto_tab, font=TAB_FONT)]],
                 expand_x=True,
                 expand_y=True,
             )
@@ -291,24 +291,35 @@ def make_fastboot_tab():
         expand_y=True,
     )
 
-    flash_actions = sg.Column(
-        [[
-            sg.Button("Flash recovery", key="-FB_FLASH_RECOVERY-", size=(16, 1)),
-            sg.Button("Flash ROM zip", key="-FB_FLASH_ROM-", size=(16, 1)),
-        ]],
-        element_justification="center",
-        expand_x=True,
-        pad=(0, 12),
-    )
-
     right = sg.Column(
         [
-            [sg.Button("Recovery", key="-FB_RECOVERY-", size=(12, 2))],
-            [sg.Button("Fastboot", key="-FB_FASTBOOT-", size=(12, 2))],
-            [sg.Button("Reboot", key="-FB_REBOOT-", size=(12, 2))],
+            [sg.Text("Reboot", font=("Helvetica", 12, "bold"))],
+            [
+                sg.Combo(
+                    [
+                        "Reboot device (adb)",
+                        "Reboot to system (fastboot)",
+                        "Reboot to recovery (adb)",
+                        "Reboot to fastboot (adb)",
+                    ],
+                    default_value="Reboot device (adb)",
+                    key="-FB_REBOOT_ACTION-",
+                    readonly=True,
+                    size=(26, 1),
+                )
+            ],
+            [sg.Button("Go", key="-FB_REBOOT_GO-", size=(8, 1))],
         ],
         element_justification="center",
         pad=(10, 0),
+    )
+
+    flash_actions = sg.Column(
+        [[sg.Button("Flash recovery", key="-FB_FLASH_RECOVERY-", size=(16, 1)),
+          sg.Button("Flash ROM zip", key="-FB_FLASH_ROM-", size=(16, 1))]],
+        element_justification="center",
+        expand_x=True,
+        pad=(0, 12),
     )
 
     return [
@@ -325,7 +336,7 @@ def make_heimdall_tab():
             [
                 sg.Text(
                     "• Bootloader MUST be unlocked\n"
-                    "• Device must be in Downloading mode\n"
+                    "• Device must be in Download mode\n"
                     "• Use files made for YOUR device only\n"
                     "• Flash recovery BEFORE flashing a ROM (TWRP also supported)\n"
                     "• First boot can take several minutes",
@@ -340,9 +351,21 @@ def make_heimdall_tab():
 
     right = sg.Column(
         [
-            [sg.Button("Recovery", key="-HD_RECOVERY-", size=(12, 2))],
-            [sg.Button("Download mode", key="-HD_DOWNLOAD_MODE-", size=(12, 2))],
-            [sg.Button("Reboot", key="-HD_REBOOT-", size=(12, 2))],
+            [sg.Text("Reboot", font=("Helvetica", 12, "bold"))],
+            [
+                sg.Combo(
+                    [
+                        "Reboot device (adb)",
+                        "Reboot to recovery (adb)",
+                        "Reboot to download (adb)",
+                    ],
+                    default_value="Reboot device (adb)",
+                    key="-HD_REBOOT_ACTION-",
+                    readonly=True,
+                    size=(26, 1),
+                )
+            ],
+            [sg.Button("Go", key="-HD_REBOOT_GO-", size=(8, 1))],
         ],
         element_justification="center",
         pad=(10, 0),
@@ -350,6 +373,7 @@ def make_heimdall_tab():
 
     flash_actions = sg.Column(
         [[
+            sg.Button("Flash VBMETA", key="-HD_FLASH_VBMETA-", size=(16, 1)),
             sg.Button("Flash recovery", key="-HD_FLASH_RECOVERY-", size=(16, 1)),
             sg.Button("Flash ROM zip", key="-HD_FLASH_ROM-", size=(16, 1)),
         ]],
@@ -403,11 +427,13 @@ def make_bootloader_tab():
 
 def make_flash_view():
     tabs = sg.TabGroup(
-        [[
-            sg.Tab("Fastboot (most devices)", make_fastboot_tab(), font=TAB_FONT),
-            sg.Tab("Heimdall (Samsung-only)", make_heimdall_tab(), font=TAB_FONT),
-            sg.Tab("Bootloader", make_bootloader_tab(), font=TAB_FONT),
-        ]],
+        [
+            [
+                sg.Tab("Fastboot (most devices)", make_fastboot_tab(), font=TAB_FONT),
+                sg.Tab("Heimdall (Samsung-only)", make_heimdall_tab(), font=TAB_FONT),
+                sg.Tab("Bootloader", make_bootloader_tab(), font=TAB_FONT),
+            ]
+        ],
         expand_x=True,
         expand_y=True,
     )
@@ -433,6 +459,7 @@ def refresh_manual(window: sg.Window):
     brand = window["-BRAND-"].get() or "Google"
     typed = window["-MODEL-"].get() or ""
     window["-SUGGEST-"].update(values=get_suggestions(brand, typed))
+    window["-DL_VBMETA-"].update(visible=(brand == "Samsung"))
 
 
 def clear_manual(window: sg.Window):
@@ -443,6 +470,7 @@ def clear_manual(window: sg.Window):
 
 def set_dl_ui(window: sg.Window, active: bool):
     window["-DL_ROM-"].update(disabled=active)
+    window["-DL_VBMETA-"].update(disabled=active)
     window["-DL_RECOVERY-"].update(disabled=active)
     window["-BACK-"].update(disabled=active)
 
@@ -478,7 +506,7 @@ def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
             )
             assert p.stdout is not None
             for line in p.stdout:
-                out_win.write_event_value("-CMD_LINE-", line.rstrip("\n"))
+                out_win.write_event_value("-CMD_LINE-", line.rstrip("\\n"))
             rc = p.wait()
             out_win.write_event_value("-CMD_DONE-", {"rc": rc})
         except Exception as e:
@@ -492,7 +520,7 @@ def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
         if e == "-CMD_LINE-":
             s = v["-CMD_LINE-"]
             lines.append(s)
-            out_win["-OUT-"].update(s + "\n", append=True)
+            out_win["-OUT-"].update(s + "\\n", append=True)
 
         if e == "-CMD_DONE-":
             data = v["-CMD_DONE-"]
@@ -500,8 +528,8 @@ def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
             err = data.get("err")
             if err:
                 lines.append(f"ERROR: {err}")
-                out_win["-OUT-"].update(f"\nERROR: {err}\n", append=True)
-            out_win["-OUT-"].update(f"\n\n--- DONE (rc={rc}) ---\n", append=True)
+                out_win["-OUT-"].update(f"\\nERROR: {err}\\n", append=True)
+            out_win["-OUT-"].update(f"\\n\\n--- DONE (rc={rc}) ---\\n", append=True)
             out_win["-OUT_CLOSE-"].update(disabled=False)
 
         if e in (sg.WINDOW_CLOSED, "-OUT_CLOSE-"):
@@ -516,14 +544,7 @@ def sideload_dialog(action_label: str = "ADB Sideload ROM zip"):
     downloads_dir.mkdir(exist_ok=True)
 
     layout = [
-        [
-            sg.Text(
-                action_label,
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
+        [sg.Text(action_label, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
         [
             sg.Text(
                 "Put your device into Recovery and enable 'ADB sideload', then select a .zip to sideload.",
@@ -537,20 +558,11 @@ def sideload_dialog(action_label: str = "ADB Sideload ROM zip"):
             sg.Button("Choose…", key="-SIDELOAD_CHOOSE-"),
         ],
         [sg.VPush()],
-        [
-            sg.Button("Start", key="-SIDELOAD_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-SIDELOAD_CANCEL-", size=(10, 1)),
-        ],
+        [sg.Button("Start", key="-SIDELOAD_START-", size=(10, 1)),
+         sg.Button("Cancel", key="-SIDELOAD_CANCEL-", size=(10, 1))],
     ]
 
-    dlg = sg.Window(
-        action_label,
-        layout,
-        modal=True,
-        finalize=True,
-        element_justification="center",
-    )
-
+    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
     picked_path = ""
 
     while True:
@@ -585,41 +597,19 @@ def flash_dialog(method_label: str, action_label: str):
     downloads_dir.mkdir(exist_ok=True)
 
     layout = [
-        [
-            sg.Text(
-                f"{method_label}: {action_label}",
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
-        [
-            sg.Text(
-                "Make sure the device is in the correct mode before flashing.",
-                justification="left",
-                expand_x=True,
-            )
-        ],
+        [sg.Text(f"{method_label}: {action_label}", font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [sg.Text("Make sure the device is in the correct mode before flashing.", justification="left", expand_x=True)],
         [sg.Text("Selected file:", pad=(0, 6))],
         [
             sg.Input(key="-FLASH_FILE-", expand_x=True, readonly=True),
             sg.Button("Choose…", key="-FLASH_CHOOSE-"),
         ],
         [sg.VPush()],
-        [
-            sg.Button("Start", key="-FLASH_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-FLASH_CANCEL-", size=(10, 1)),
-        ],
+        [sg.Button("Start", key="-FLASH_START-", size=(10, 1)),
+         sg.Button("Cancel", key="-FLASH_CANCEL-", size=(10, 1))],
     ]
 
-    dlg = sg.Window(
-        action_label,
-        layout,
-        modal=True,
-        finalize=True,
-        element_justification="center",
-    )
-
+    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
     picked_path = ""
 
     while True:
@@ -698,9 +688,58 @@ def flash_dialog(method_label: str, action_label: str):
                         title="Done",
                     )
             else:
-                sg.popup(f"Flashing failed (rc={rc}).\n\nCheck the output window.", title="Error")
+                sg.popup(
+                    f"Flashing failed (rc={rc}).\n\nCheck the output window.",
+                    title="Error",
+                )
 
             return
+
+
+def _do_fb_reboot(choice: str):
+    if choice == "Reboot device (adb)":
+        rc, last, _lines = adb_reboot_system()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    if choice == "Reboot to recovery (adb)":
+        rc, last, _lines = adb_reboot_recovery()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    if choice == "Reboot to fastboot (adb)":
+        rc, last, _lines = adb_reboot_fastboot()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    if choice == "Reboot to system (fastboot)":
+        rc, _lines = run_live_cmd("Fastboot reboot", ["pkexec", "fastboot", "reboot"])
+        if rc == 0:
+            sg.popup("Fastboot reboot OK.", title="Done")
+        else:
+            sg.popup(f"Fastboot reboot failed (rc={rc}).", title="Error")
+        return
+
+    sg.popup(f"Unknown action: {choice}", title="Error")
+
+
+def _do_hd_reboot(choice: str):
+    if choice == "Reboot device (adb)":
+        rc, last, _lines = adb_reboot_system()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    if choice == "Reboot to recovery (adb)":
+        rc, last, _lines = adb_reboot_recovery()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    if choice == "Reboot to download (adb)":
+        rc, last, _lines = adb_reboot_download()
+        sg.popup(f"{choice}\n\nReturn code: {rc}\n{last}")
+        return
+
+    sg.popup(f"Unknown action: {choice}", title="Error")
 
 
 def main():
@@ -734,7 +773,7 @@ def main():
     )
 
     window = sg.Window(
-        "LibreFlash alpha-1",
+        "LibreFlash alpha-2",
         [[main_col, download_col, flash_col]],
         size=(700, 460),
         element_justification="center",
@@ -803,56 +842,84 @@ def main():
         if event == sg.WINDOW_CLOSED:
             break
 
+        # Flash actions
         if event == "-FB_FLASH_RECOVERY-":
             flash_dialog("Fastboot", "Flash recovery")
-        if event == "-FB_FLASH_ROM-":
+        elif event == "-FB_FLASH_ROM-":
             sideload_dialog("ADB Sideload ROM zip")
-        if event == "-HD_FLASH_RECOVERY-":
+        elif event == "-HD_FLASH_VBMETA-":
+            vbmeta_flash_dialog()
+        elif event == "-HD_FLASH_RECOVERY-":
             flash_dialog("Heimdall", "Flash recovery")
-        if event == "-HD_FLASH_ROM-":
+        elif event == "-HD_FLASH_ROM-":
             sideload_dialog("ADB Sideload ROM zip")
 
-        if event == "-DOWNLOAD-":
+        # Reboot dropdowns
+        elif event == "-FB_REBOOT_GO-":
+            _do_fb_reboot(values.get("-FB_REBOOT_ACTION-", "Reboot device (adb)"))
+        elif event == "-HD_REBOOT_GO-":
+            _do_hd_reboot(values.get("-HD_REBOOT_ACTION-", "Reboot device (adb)"))
+
+        # Navigation
+        elif event == "-DOWNLOAD-":
             window["-PAGE_MAIN-"].update(visible=False)
             window["-PAGE_DOWNLOAD-"].update(visible=True)
             window["-PAGE_FLASH-"].update(visible=False)
             clear_manual(window)
 
-        if event == "-FLASH-":
+        elif event == "-FLASH-":
             window["-PAGE_MAIN-"].update(visible=False)
             window["-PAGE_DOWNLOAD-"].update(visible=False)
             window["-PAGE_FLASH-"].update(visible=True)
 
-        if event == "-FLASH_BACK-":
+        elif event == "-FLASH_BACK-":
             window["-PAGE_FLASH-"].update(visible=False)
             window["-PAGE_MAIN-"].update(visible=True)
 
-        if event == "-BACK-":
+        elif event == "-BACK-":
             if dl_active:
                 sg.popup("Download is running. Cancel it first.")
             else:
                 window["-PAGE_DOWNLOAD-"].update(visible=False)
                 window["-PAGE_MAIN-"].update(visible=True)
 
-        if event == "-BRAND-":
+        # Manual selection UX
+        elif event == "-BRAND-":
             window["-MODEL-"].update("")
             window["-CODENAME_TXT-"].update("")
             refresh_manual(window)
 
-        if event == "-MODEL-":
+        elif event == "-MODEL-":
             refresh_manual(window)
             brand = values["-BRAND-"]
             model_exact = (values["-MODEL-"] or "").strip()
             window["-CODENAME_TXT-"].update(CODENAME_BY_BRAND_MODEL.get((brand, model_exact), ""))
 
-        if event == "-SUGGEST-":
+        elif event == "-SUGGEST-":
             brand = values["-BRAND-"]
             picked = (values["-SUGGEST-"] or [None])[0]
             if picked:
                 window["-MODEL-"].update(picked)
                 window["-CODENAME_TXT-"].update(CODENAME_BY_BRAND_MODEL.get((brand, picked), ""))
 
-        if event == "-DL_ROM-":
+        # Downloads
+        elif event == "-DL_VBMETA-":
+            brand, _model, codename = selected_brand_model_codename(values)
+            if brand != "Samsung":
+                sg.popup("VBMETA download is available for Samsung only.")
+            elif not codename:
+                sg.popup("Please select a valid model from the suggestions first.")
+            else:
+                try:
+                    artifact = latest_vbmeta_via_mirrorbits(codename, max_tries=12)
+                    fname = artifact["filename"]  # "vbmeta.img"
+                    date = artifact["date"]
+                    default_name = f"{codename}-{date}-{fname}"
+                    start_download("VBMETA Image", artifact["url"], default_name)
+                except Exception as e:
+                    sg.popup(f"VBMETA download setup failed.\n\n{e}")
+
+        elif event == "-DL_ROM-":
             _brand, _model, codename = selected_brand_model_codename(values)
             if not codename:
                 sg.popup("Please select a valid model from the suggestions first.")
@@ -863,7 +930,7 @@ def main():
                 except Exception as e:
                     sg.popup(f"ROM download setup failed.\n\n{e}")
 
-        if event == "-DL_RECOVERY-":
+        elif event == "-DL_RECOVERY-":
             brand, model, codename = selected_brand_model_codename(values)
             if not codename:
                 sg.popup("Please select a valid model from the suggestions first.")
@@ -883,11 +950,11 @@ def main():
                 except Exception as e:
                     sg.popup(f"Recovery/boot download setup failed.\n\n{e}")
 
-        if event == "-CANCEL_DL-":
+        elif event == "-CANCEL_DL-":
             if dl_active:
                 dl_stop.set()
 
-        if event == "-DL_PROGRESS-":
+        elif event == "-DL_PROGRESS-":
             data = values["-DL_PROGRESS-"]
             done = int(data.get("done", 0))
             total = data.get("total", None)
@@ -897,47 +964,24 @@ def main():
             else:
                 window["-PROG-"].update_bar((done // (1024 * 1024)) % 100, max=100)
 
-        if event == "-DL_DONE-":
+        elif event == "-DL_DONE-":
             dl_active = False
             set_dl_ui(window, False)
             saved_path = values["-DL_DONE-"]["path"]
             sg.popup(f"Download finished!\n\nSaved to:\n{saved_path}")
 
-        if event == "-DL_ERROR-":
+        elif event == "-DL_ERROR-":
             dl_active = False
             set_dl_ui(window, False)
             sg.popup(f"Download failed.\n\n{values['-DL_ERROR-']['error']}")
 
-        if event == "-DL_CANCELLED-":
+        elif event == "-DL_CANCELLED-":
             dl_active = False
             set_dl_ui(window, False)
             sg.popup("Download cancelled.")
 
-        if event == "-FB_RECOVERY-":
-            rc, last, _lines = adb_reboot_recovery()
-            sg.popup(f"adb reboot recovery\n\nReturn code: {rc}\n{last}")
-
-        if event == "-FB_FASTBOOT-":
-            rc, last, _lines = adb_reboot_fastboot()
-            sg.popup(f"adb reboot bootloader\n\nReturn code: {rc}\n{last}")
-
-        if event == "-FB_REBOOT-":
-            rc, last, _lines = adb_reboot_system()
-            sg.popup(f"adb reboot\n\nReturn code: {rc}\n{last}")
-
-        if event == "-HD_RECOVERY-":
-            rc, last, _lines = adb_reboot_recovery()
-            sg.popup(f"adb reboot recovery\n\nReturn code: {rc}\n{last}")
-
-        if event == "-HD_DOWNLOAD_MODE-":
-            rc, last, _lines = adb_reboot_download()
-            sg.popup(f"adb reboot download\n\nReturn code: {rc}\n{last}")
-
-        if event == "-HD_REBOOT-":
-            rc, last, _lines = adb_reboot_system()
-            sg.popup(f"adb reboot\n\nReturn code: {rc}\n{last}")
-
-        if event == "-UTIL_BL_STATUS-":
+        # Bootloader utils
+        elif event == "-UTIL_BL_STATUS-":
             rc, lines = run_live_cmd(
                 "Bootloader status (fastboot getvar unlocked)",
                 ["pkexec", "fastboot", "getvar", "unlocked"],
@@ -957,13 +1001,13 @@ def main():
                 sg.popup(f"Your bootloader status: {status}", title="BL Status")
             else:
                 sg.popup(
-                    f"Could not reliably read bootloader status.\n\n"
+                    "Could not reliably read bootloader status.\n\n"
                     f"Parsed: {status}\n\n"
                     f"(rc={rc})\n\nRaw output:\n{out}",
                     title="BL Status",
                 )
 
-        if event == "-UTIL_BL_UNLOCK-":
+        elif event == "-UTIL_BL_UNLOCK-":
             confirm = sg.popup_yes_no(
                 "Unlock bootloader?\n\nThis often wipes ALL data.\n\nProceed?",
                 title="Confirm bootloader unlock",
@@ -971,7 +1015,7 @@ def main():
             if confirm == "Yes":
                 run_live_cmd("Bootloader unlock", ["pkexec", "fastboot", "flashing", "unlock"])
 
-        if event == "-UTIL_BL_LOCK-":
+        elif event == "-UTIL_BL_LOCK-":
             confirm = sg.popup_yes_no(
                 "Lock bootloader?\n\nLocking with modified software can brick the device.\n"
                 "Proceed only if it's safe.\n\nProceed?",
@@ -981,6 +1025,93 @@ def main():
                 run_live_cmd("Bootloader lock", ["pkexec", "fastboot", "flashing", "lock"])
 
     window.close()
+
+
+def vbmeta_flash_dialog(action_label: str = "Flash VBMETA (Heimdall)"):
+    downloads_dir = Path.home() / "Downloads"
+    downloads_dir.mkdir(exist_ok=True)
+
+    layout = [
+        [sg.Text(action_label, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [
+            sg.Text(
+                "Put your Samsung device into Download Mode.\n"
+                "Select a vbmeta.img to flash using Heimdall.\n\n"
+                "⚠ Flashing VBMETA incorrectly can brick your device.",
+                justification="left",
+                expand_x=True,
+            )
+        ],
+        [sg.Text("Selected file:", pad=(0, 6))],
+        [
+            sg.Input(key="-VBMETA_FILE-", expand_x=True, readonly=True),
+            sg.Button("Choose…", key="-VBMETA_CHOOSE-"),
+        ],
+        [sg.VPush()],
+        [sg.Button("Start", key="-VBMETA_START-", size=(10, 1)),
+         sg.Button("Cancel", key="-VBMETA_CANCEL-", size=(10, 1))],
+    ]
+
+    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
+    picked_path = ""
+
+    while True:
+        ev, _vals = dlg.read()
+        if ev in (sg.WINDOW_CLOSED, "-VBMETA_CANCEL-"):
+            dlg.close()
+            break
+
+        if ev == "-VBMETA_CHOOSE-":
+            p = sg.popup_get_file(
+                "Select VBMETA image",
+                no_window=True,
+                initial_folder=str(downloads_dir),
+                file_types=(("IMG files", "*.img"),),
+            )
+            if p:
+                picked_path = p
+                dlg["-VBMETA_FILE-"].update(picked_path)
+
+        if ev == "-VBMETA_START-":
+            if not picked_path:
+                sg.popup("Please choose a vbmeta.img file first.")
+                continue
+
+            fname = Path(picked_path).name.lower()
+            if "vbmeta" not in fname:
+                confirm = sg.popup_yes_no(
+                    "The selected file does not look like a VBMETA image.\n\nFlash anyway?",
+                    title="Confirm VBMETA flash",
+                )
+                if confirm != "Yes":
+                    continue
+
+            confirm = sg.popup_yes_no(
+                f"About to flash VBMETA via Heimdall:\n\n{picked_path}\n\nProceed?",
+                title="Confirm flashing",
+            )
+            if confirm != "Yes":
+                continue
+
+            dlg.close()
+
+            rc, _lines = run_live_cmd(
+                "Heimdall flashing VBMETA",
+                ["heimdall", "flash", "--VBMETA", picked_path, "--no-reboot"],
+            )
+
+            if rc == 0:
+                sg.popup(
+                    "VBMETA flashed successfully.\n\nHeimdall was run with --no-reboot.\nReboot manually.",
+                    title="Done",
+                )
+            else:
+                sg.popup(
+                    f"VBMETA flashing failed (rc={rc}).\n\nCheck the output window for details.",
+                    title="Error",
+                )
+
+            return
 
 
 if __name__ == "__main__":
