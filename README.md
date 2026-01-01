@@ -1,4 +1,9 @@
 # LibreFlash
+<p align="center">
+  <img src="Pictures/Photo1.png" width="250" />
+  <img src="Pictures/Photo2.png" width="250" />
+  <img src="Pictures/Photo3.png" width="250" />
+</p>
 
 LibreFlash is a simple Linux application that helps you download and flash Android ROMs without having to memorize command-line tools.
 
