@@ -94,7 +94,7 @@ LibreFlash is provided as-is, without warranty of any kind.
 
 ## Project status
 
-* Version: v0.0.1-alpha1
+* Version: v0.0.1-alpha2
 * Device download list is incomplete
 * Flashing works for all devices if correct files are supplied
 
@@ -103,6 +103,7 @@ Planned features:
 * Magisk installer via ADB sideload
 * Expanded device list for downloads
 * Device status panel
+* SHA256 verification
 * macOS support
 
 ---
