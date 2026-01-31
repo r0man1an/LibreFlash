@@ -162,14 +162,16 @@ def make_manual_tab():
                     size=(brand_w, 1),
                     pad=((0, gap_x), 0),
                 ),
-                sg.Input(key="-MODEL-", enable_events=True, size=(model_w, 1), pad=(0, 0)),
+                sg.Input(
+                    key="-MODEL-", enable_events=True, size=(model_w, 1), pad=(0, 0)
+                ),
             ],
             [
                 sg.Text("", size=(brand_w, 3), pad=((0, gap_x), 0)),
                 sg.Listbox(
                     values=[],
                     key="-SUGGEST-",
-                    size=(model_w, 3),
+                    size=(model_w, 5),
                     enable_events=True,
                     pad=(0, 0),
                 ),
@@ -179,13 +181,17 @@ def make_manual_tab():
         pad=(10, 0),
     )
 
-    top_row = sg.Column([[selector_grid]], element_justification="center", expand_x=True)
+    top_row = sg.Column(
+        [[selector_grid]], element_justification="center", expand_x=True
+    )
 
     codename_row = sg.Column(
         [
             [
                 sg.Text("Codename:", pad=(0, 0)),
-                sg.Text("", key="-CODENAME_TXT-", pad=(6, 0), font=("Helvetica", 11, "bold")),
+                sg.Text(
+                    "", key="-CODENAME_TXT-", pad=(6, 0), font=("Helvetica", 11, "bold")
+                ),
             ]
         ],
         element_justification="center",
@@ -199,7 +205,9 @@ def make_manual_tab():
             [
                 sg.Button("Download ROM", key="-DL_ROM-", size=(14, 1)),
                 sg.Button("Download Recovery", key="-DL_RECOVERY-", size=(18, 1)),
-                sg.Button("Download VBMETA", key="-DL_VBMETA-", size=(16, 1), visible=False),
+                sg.Button(
+                    "Download VBMETA", key="-DL_VBMETA-", size=(16, 1), visible=False
+                ),
                 sg.Button("Back", key="-BACK-", size=(10, 1)),
             ]
         ],
@@ -241,7 +249,11 @@ def make_manual_tab():
 def make_download_view():
     auto_tab = [
         [sg.VPush()],
-        [sg.Text("Device recognition coming soon.", justification="center", expand_x=True)],
+        [
+            sg.Text(
+                "Device recognition coming soon.", justification="center", expand_x=True
+            )
+        ],
         [sg.VPush()],
     ]
 
@@ -249,7 +261,11 @@ def make_download_view():
 
     return [
         [sg.VPush()],
-        [sg.Text("Download", font=SUBTITLE_FONT, justification="center", expand_x=True)],
+        [
+            sg.Text(
+                "Download", font=SUBTITLE_FONT, justification="center", expand_x=True
+            )
+        ],
         [
             sg.Text(
                 "Choose how you want to download files.",
@@ -261,7 +277,12 @@ def make_download_view():
         [sg.VPush()],
         [
             sg.TabGroup(
-                [[sg.Tab("Manual", manual_tab, font=TAB_FONT), sg.Tab("Auto", auto_tab, font=TAB_FONT)]],
+                [
+                    [
+                        sg.Tab("Manual", manual_tab, font=TAB_FONT),
+                        sg.Tab("Auto", auto_tab, font=TAB_FONT),
+                    ]
+                ],
                 expand_x=True,
                 expand_y=True,
             )
@@ -273,8 +294,19 @@ def make_download_view():
 def make_fastboot_tab():
     left = sg.Column(
         [
-            [sg.Text("Use this method for most Android phones (except Samsung).", justification="left")],
-            [sg.Text("Before you flash:", font=("Helvetica", 12, "bold"), justification="left")],
+            [
+                sg.Text(
+                    "Use this method for most Android phones (except Samsung).",
+                    justification="left",
+                )
+            ],
+            [
+                sg.Text(
+                    "Before you flash:",
+                    font=("Helvetica", 12, "bold"),
+                    justification="left",
+                )
+            ],
             [
                 sg.Text(
                     "• Bootloader MUST be unlocked\n"
@@ -315,8 +347,12 @@ def make_fastboot_tab():
     )
 
     flash_actions = sg.Column(
-        [[sg.Button("Flash recovery", key="-FB_FLASH_RECOVERY-", size=(16, 1)),
-          sg.Button("Flash ROM zip", key="-FB_FLASH_ROM-", size=(16, 1))]],
+        [
+            [
+                sg.Button("Flash recovery", key="-FB_FLASH_RECOVERY-", size=(16, 1)),
+                sg.Button("Flash ROM zip", key="-FB_FLASH_ROM-", size=(16, 1)),
+            ]
+        ],
         element_justification="center",
         expand_x=True,
         pad=(0, 12),
@@ -332,7 +368,13 @@ def make_heimdall_tab():
     left = sg.Column(
         [
             [sg.Text("Use this method for all Samsung devices.", justification="left")],
-            [sg.Text("Before you flash:", font=("Helvetica", 12, "bold"), justification="left")],
+            [
+                sg.Text(
+                    "Before you flash:",
+                    font=("Helvetica", 12, "bold"),
+                    justification="left",
+                )
+            ],
             [
                 sg.Text(
                     "• Bootloader MUST be unlocked\n"
@@ -372,11 +414,13 @@ def make_heimdall_tab():
     )
 
     flash_actions = sg.Column(
-        [[
-            sg.Button("Flash VBMETA", key="-HD_FLASH_VBMETA-", size=(16, 1)),
-            sg.Button("Flash recovery", key="-HD_FLASH_RECOVERY-", size=(16, 1)),
-            sg.Button("Flash ROM zip", key="-HD_FLASH_ROM-", size=(16, 1)),
-        ]],
+        [
+            [
+                sg.Button("Flash VBMETA", key="-HD_FLASH_VBMETA-", size=(16, 1)),
+                sg.Button("Flash recovery", key="-HD_FLASH_RECOVERY-", size=(16, 1)),
+                sg.Button("Flash ROM zip", key="-HD_FLASH_ROM-", size=(16, 1)),
+            ]
+        ],
         element_justification="center",
         expand_x=True,
         pad=(0, 12),
@@ -440,7 +484,11 @@ def make_flash_view():
 
     return [
         [sg.VPush()],
-        [sg.Text("Flashing", font=SUBTITLE_FONT, justification="center", expand_x=True)],
+        [
+            sg.Text(
+                "Flashing", font=SUBTITLE_FONT, justification="center", expand_x=True
+            )
+        ],
         [
             sg.Text(
                 "Choose a flashing method.",
@@ -544,7 +592,14 @@ def sideload_dialog(action_label: str = "ADB Sideload ROM zip"):
     downloads_dir.mkdir(exist_ok=True)
 
     layout = [
-        [sg.Text(action_label, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [
+            sg.Text(
+                action_label,
+                font=("Helvetica", 14, "bold"),
+                justification="center",
+                expand_x=True,
+            )
+        ],
         [
             sg.Text(
                 "Put your device into Recovery and enable 'ADB sideload', then select a .zip to sideload.",
@@ -558,11 +613,15 @@ def sideload_dialog(action_label: str = "ADB Sideload ROM zip"):
             sg.Button("Choose…", key="-SIDELOAD_CHOOSE-"),
         ],
         [sg.VPush()],
-        [sg.Button("Start", key="-SIDELOAD_START-", size=(10, 1)),
-         sg.Button("Cancel", key="-SIDELOAD_CANCEL-", size=(10, 1))],
+        [
+            sg.Button("Start", key="-SIDELOAD_START-", size=(10, 1)),
+            sg.Button("Cancel", key="-SIDELOAD_CANCEL-", size=(10, 1)),
+        ],
     ]
 
-    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
+    dlg = sg.Window(
+        action_label, layout, modal=True, finalize=True, element_justification="center"
+    )
     picked_path = ""
 
     while True:
@@ -597,19 +656,36 @@ def flash_dialog(method_label: str, action_label: str):
     downloads_dir.mkdir(exist_ok=True)
 
     layout = [
-        [sg.Text(f"{method_label}: {action_label}", font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
-        [sg.Text("Make sure the device is in the correct mode before flashing.", justification="left", expand_x=True)],
+        [
+            sg.Text(
+                f"{method_label}: {action_label}",
+                font=("Helvetica", 14, "bold"),
+                justification="center",
+                expand_x=True,
+            )
+        ],
+        [
+            sg.Text(
+                "Make sure the device is in the correct mode before flashing.",
+                justification="left",
+                expand_x=True,
+            )
+        ],
         [sg.Text("Selected file:", pad=(0, 6))],
         [
             sg.Input(key="-FLASH_FILE-", expand_x=True, readonly=True),
             sg.Button("Choose…", key="-FLASH_CHOOSE-"),
         ],
         [sg.VPush()],
-        [sg.Button("Start", key="-FLASH_START-", size=(10, 1)),
-         sg.Button("Cancel", key="-FLASH_CANCEL-", size=(10, 1))],
+        [
+            sg.Button("Start", key="-FLASH_START-", size=(10, 1)),
+            sg.Button("Cancel", key="-FLASH_CANCEL-", size=(10, 1)),
+        ],
     ]
 
-    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
+    dlg = sg.Window(
+        action_label, layout, modal=True, finalize=True, element_justification="center"
+    )
     picked_path = ""
 
     while True:
@@ -808,7 +884,9 @@ def main():
         set_dl_ui(window, True)
 
         def on_progress(p: DownloadProgress):
-            window.write_event_value("-DL_PROGRESS-", {"done": p.done, "total": p.total})
+            window.write_event_value(
+                "-DL_PROGRESS-", {"done": p.done, "total": p.total}
+            )
 
         def on_done(path: Path):
             window.write_event_value("-DL_DONE-", {"path": str(path)})
@@ -893,14 +971,18 @@ def main():
             refresh_manual(window)
             brand = values["-BRAND-"]
             model_exact = (values["-MODEL-"] or "").strip()
-            window["-CODENAME_TXT-"].update(CODENAME_BY_BRAND_MODEL.get((brand, model_exact), ""))
+            window["-CODENAME_TXT-"].update(
+                CODENAME_BY_BRAND_MODEL.get((brand, model_exact), "")
+            )
 
         elif event == "-SUGGEST-":
             brand = values["-BRAND-"]
             picked = (values["-SUGGEST-"] or [None])[0]
             if picked:
                 window["-MODEL-"].update(picked)
-                window["-CODENAME_TXT-"].update(CODENAME_BY_BRAND_MODEL.get((brand, picked), ""))
+                window["-CODENAME_TXT-"].update(
+                    CODENAME_BY_BRAND_MODEL.get((brand, picked), "")
+                )
 
         # Downloads
         elif event == "-DL_VBMETA-":
@@ -992,9 +1074,13 @@ def main():
 
             status = "Unknown"
             if "unlocked:" in low:
-                if any(x in low for x in ("unlocked: yes", "unlocked: true", "unlocked: 1")):
+                if any(
+                    x in low for x in ("unlocked: yes", "unlocked: true", "unlocked: 1")
+                ):
                     status = "Unlocked"
-                elif any(x in low for x in ("unlocked: no", "unlocked: false", "unlocked: 0")):
+                elif any(
+                    x in low for x in ("unlocked: no", "unlocked: false", "unlocked: 0")
+                ):
                     status = "Locked"
 
             if rc == 0:
@@ -1013,7 +1099,9 @@ def main():
                 title="Confirm bootloader unlock",
             )
             if confirm == "Yes":
-                run_live_cmd("Bootloader unlock", ["pkexec", "fastboot", "flashing", "unlock"])
+                run_live_cmd(
+                    "Bootloader unlock", ["pkexec", "fastboot", "flashing", "unlock"]
+                )
 
         elif event == "-UTIL_BL_LOCK-":
             confirm = sg.popup_yes_no(
@@ -1022,7 +1110,9 @@ def main():
                 title="Confirm bootloader lock",
             )
             if confirm == "Yes":
-                run_live_cmd("Bootloader lock", ["pkexec", "fastboot", "flashing", "lock"])
+                run_live_cmd(
+                    "Bootloader lock", ["pkexec", "fastboot", "flashing", "lock"]
+                )
 
     window.close()
 
@@ -1032,7 +1122,14 @@ def vbmeta_flash_dialog(action_label: str = "Flash VBMETA (Heimdall)"):
     downloads_dir.mkdir(exist_ok=True)
 
     layout = [
-        [sg.Text(action_label, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [
+            sg.Text(
+                action_label,
+                font=("Helvetica", 14, "bold"),
+                justification="center",
+                expand_x=True,
+            )
+        ],
         [
             sg.Text(
                 "Put your Samsung device into Download Mode.\n"
@@ -1048,11 +1145,15 @@ def vbmeta_flash_dialog(action_label: str = "Flash VBMETA (Heimdall)"):
             sg.Button("Choose…", key="-VBMETA_CHOOSE-"),
         ],
         [sg.VPush()],
-        [sg.Button("Start", key="-VBMETA_START-", size=(10, 1)),
-         sg.Button("Cancel", key="-VBMETA_CANCEL-", size=(10, 1))],
+        [
+            sg.Button("Start", key="-VBMETA_START-", size=(10, 1)),
+            sg.Button("Cancel", key="-VBMETA_CANCEL-", size=(10, 1)),
+        ],
     ]
 
-    dlg = sg.Window(action_label, layout, modal=True, finalize=True, element_justification="center")
+    dlg = sg.Window(
+        action_label, layout, modal=True, finalize=True, element_justification="center"
+    )
     picked_path = ""
 
     while True:
