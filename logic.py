@@ -186,6 +186,50 @@ def latest_recovery_or_boot_for_device(
         return latest_boot_via_mirrorbits(codename, max_tries=max_tries)
 
 
+def latest_magisk_apk() -> dict:
+    api = "https://api.github.com/repos/topjohnwu/Magisk/releases/latest"
+
+    with _session() as s:
+        r = s.get(api, timeout=30)
+        r.raise_for_status()
+        j = r.json()
+
+    tag = (j.get("tag_name") or "").strip()
+    if not tag:
+        raise RuntimeError("Missing tag_name")
+
+    assets = j.get("assets") or []
+    apk = None
+
+    for a in assets:
+        name = a.get("name") or ""
+        if name.startswith("Magisk-") and name.lower().endswith(".apk"):
+            apk = a
+            break
+
+    if apk is None:
+        for a in assets:
+            name = a.get("name") or ""
+            if name.lower().endswith(".apk"):
+                apk = a
+                break
+
+    if apk is None:
+        raise RuntimeError("No Magisk APK asset found")
+
+    url = (apk.get("browser_download_url") or "").strip()
+    filename = (apk.get("name") or "").strip()
+    if not url or not filename:
+        raise RuntimeError("Missing APK download url or filename")
+
+    return {
+        "tag": tag,
+        "filename": filename,
+        "url": url,
+        "release_page": f"https://github.com/topjohnwu/Magisk/releases/tag/{tag}",
+    }
+
+
 DEVICES = (
     ("Google", "Pixel", "sailfish"),
     ("Google", "Pixel XL", "marlin"),
