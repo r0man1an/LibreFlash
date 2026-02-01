@@ -1064,7 +1064,7 @@ def main():
     )
 
     window = sg.Window(
-        "LibreFlash alpha-2",
+        "LibreFlash alpha-3",
         [[main_col, download_col, flash_col]],
         size=(700, 460),
         element_justification="center",
