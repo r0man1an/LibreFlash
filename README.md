@@ -26,7 +26,8 @@ This project is currently **alpha software**. Most features work, but rough edge
 
   * Fastboot (most devices)
   * Heimdall (Samsung devices)
-* Install ROM ZIPs using ADB sideload
+  * Install ROM ZIPs using ADB sideload
+  * Root your device with Magisk easelly
 
 Flashing works for **all devices**, official or unofficial, as long as the correct files are provided.
 The device list only affects downloading, not flashing.
