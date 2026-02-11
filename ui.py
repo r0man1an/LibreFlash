@@ -347,12 +347,12 @@ def make_fastboot_tab():
             [
                 sg.Combo(
                     [
+                        "Reboot to fastboot (adb)",
+                        "Reboot to recovery (adb)",
                         "Reboot device (adb)",
                         "Reboot to system (fastboot)",
-                        "Reboot to recovery (adb)",
-                        "Reboot to fastboot (adb)",
                     ],
-                    default_value="Reboot device (adb)",
+                    default_value="Reboot to fastboot (adb)",
                     key="-FB_REBOOT_ACTION-",
                     readonly=True,
                     size=(26, 1),
@@ -415,11 +415,11 @@ def make_heimdall_tab():
             [
                 sg.Combo(
                     [
-                        "Reboot device (adb)",
-                        "Reboot to recovery (adb)",
                         "Reboot to download (adb)",
+                        "Reboot to recovery (adb)",
+                        "Reboot device (adb)",
                     ],
-                    default_value="Reboot device (adb)",
+                    default_value="Reboot to download (adb)",
                     key="-HD_REBOOT_ACTION-",
                     readonly=True,
                     size=(26, 1),
@@ -495,7 +495,6 @@ def make_magisk_tab():
                 sg.Text(
                     "Magisk provides systemless root and modules.\n"
                     "For recovery-based installs, Magisk can be sideloaded.\n"
-                    "Magisk APK is a ZIP container; this tool copies .apk to .zip before sideloading."
                 )
             ],
             [sg.Text("Before you flash:", font=("Helvetica", 12, "bold"))],
@@ -503,7 +502,8 @@ def make_magisk_tab():
                 sg.Text(
                     "• Device must be in Recovery\n"
                     "• In Recovery, enable 'ADB sideload'\n"
-                    "• Pick a Magisk .apk from official releases\n"
+                    "• Click Download to get the latest Magisk APK\n"
+                    "• After Downloading, click Flash Magisk and select the Downloaded file\n"
                     "• If something goes wrong, you may need to restore a boot image backup",
                     justification="left",
                 )
