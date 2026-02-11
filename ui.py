@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-
 from pathlib import Path
-
 import threading
-
 import subprocess
-
 import shutil
-
 from typing import Optional
 
-
 import FreeSimpleGUI as sg
-
 
 from logic import (
     BRANDS,
@@ -24,36 +17,30 @@ from logic import (
     adb_reboot_recovery,
     adb_reboot_system,
     adb_reboot_download,
+    adb_connected_codename,
     download_with_progress,
     get_suggestions,
     latest_nightly,
     latest_recovery_or_boot_for_device,
     latest_vbmeta_via_mirrorbits,
     latest_magisk_apk,
+    archive_devices,
+    latest_archive_build,
 )
-
 
 sg.theme("DarkGrey13")
 
-
 TITLE_FONT = ("Helvetica", 22, "bold")
-
 DESC_FONT = ("Helvetica", 11)
-
 BUTTON_FONT = ("Helvetica", 14, "bold")
-
 SUBTITLE_FONT = ("Helvetica", 18, "bold")
-
 TAB_FONT = ("Helvetica", 11, "bold")
 
 
 def check_dependencies_or_exit() -> None:
     required = ["adb", "fastboot", "pkexec"]
-
     optional = ["heimdall"]
-
     missing_req = [x for x in required if shutil.which(x) is None]
-
     missing_opt = [x for x in optional if shutil.which(x) is None]
 
     if missing_req:
@@ -112,6 +99,17 @@ def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
         return "recovery", "recovery.img"
 
     return None, None
+
+
+def _format_codename_line(connected: str, selected: str) -> str:
+    connected = (connected or "").strip()
+    selected = (selected or "").strip()
+    parts: list[str] = []
+    if connected:
+        parts.append(f"Codename (connected): {connected}")
+    if selected:
+        parts.append(f"Codename (selected): {selected}")
+    return "    ".join(parts)
 
 
 def make_main_view():
@@ -207,10 +205,16 @@ def make_manual_tab():
     codename_row = sg.Column(
         [
             [
-                sg.Text("Codename:", pad=(0, 0)),
                 sg.Text(
-                    "", key="-CODENAME_TXT-", pad=(6, 0), font=("Helvetica", 11, "bold")
+                    "",
+                    key="-CODENAME_LINE-",
+                    pad=(0, 0),
+                    font=("Helvetica", 11, "bold"),
+                    justification="center",
+                    expand_x=True,
                 ),
+                # Hidden legacy element kept for compatibility with existing update calls
+                sg.Text("", key="-CODENAME_TXT-", visible=False, pad=(0, 0)),
             ]
         ],
         element_justification="center",
@@ -264,6 +268,122 @@ def make_manual_tab():
     ]
 
 
+def make_archive_tab():
+    desc_line = [
+        sg.Text(
+            "Find and download legacy LineageOS builds from the unofficial archive.",
+            justification="center",
+            expand_x=True,
+            pad=(0, 10),
+        )
+    ]
+
+    model_w = 24
+
+    selector_grid = sg.Column(
+        [
+            [
+                sg.Text(
+                    "Device codename",
+                    justification="center",
+                    size=(model_w, 1),
+                    pad=(0, 2),
+                ),
+            ],
+            [
+                sg.Input(
+                    key="-ARCH_MODEL-",
+                    enable_events=True,
+                    size=(model_w, 1),
+                    pad=(0, 0),
+                )
+            ],
+            [
+                sg.Listbox(
+                    values=[],
+                    key="-ARCH_SUGGEST-",
+                    size=(model_w, 5),
+                    enable_events=True,
+                    pad=(0, 0),
+                )
+            ],
+        ],
+        element_justification="center",
+        pad=(10, 0),
+    )
+
+    top_row = sg.Column(
+        [[selector_grid]], element_justification="center", expand_x=True
+    )
+
+    selected_row = sg.Column(
+        [
+            [
+                sg.Text(
+                    "",
+                    key="-ARCH_CODENAME_LINE-",
+                    pad=(0, 0),
+                    font=("Helvetica", 11, "bold"),
+                    justification="center",
+                    expand_x=True,
+                ),
+                # Hidden legacy element kept for compatibility with existing update calls
+                sg.Text("", key="-ARCH_SELECTED_TXT-", visible=False, pad=(0, 0)),
+            ]
+        ],
+        element_justification="center",
+        expand_x=True,
+        pad=(0, 8),
+    )
+
+    buttons_row = sg.Column(
+        [
+            [
+                sg.Button("Download ROM", key="-ARCH_DL_ROM-", size=(14, 1)),
+                sg.Button("Refresh", key="-ARCH_REFRESH-", size=(10, 1)),
+                sg.Button("Back", key="-ARCH_BACK-", size=(10, 1)),
+            ]
+        ],
+        element_justification="center",
+        expand_x=True,
+        pad=(0, 6),
+    )
+
+    progress_row = sg.Column(
+        [
+            [
+                sg.ProgressBar(
+                    max_value=100,
+                    orientation="h",
+                    size=(34, 12),
+                    key="-ARCH_PROG-",
+                    visible=False,
+                ),
+                sg.Button(
+                    "Cancel",
+                    key="-ARCH_CANCEL_DL-",
+                    size=(10, 1),
+                    visible=False,
+                ),
+            ]
+        ],
+        element_justification="center",
+        expand_x=True,
+        pad=(0, 6),
+    )
+
+    return [
+        [sg.VPush()],
+        desc_line,
+        [top_row],
+        [sg.VPush()],
+        [selected_row],
+        [buttons_row],
+        [progress_row],
+        [sg.VPush()],
+    ]
+
+
 def make_download_view():
     auto_tab = [
         [sg.VPush()],
@@ -276,6 +396,8 @@ def make_download_view():
     ]
 
     manual_tab = make_manual_tab()
+
+    archive_tab = make_archive_tab()
 
     return [
         [sg.VPush()],
@@ -299,6 +421,7 @@ def make_download_view():
                     [
                         sg.Tab("Manual", manual_tab, font=TAB_FONT),
                         sg.Tab("Auto", auto_tab, font=TAB_FONT),
+                        sg.Tab("Unofficial", archive_tab, font=TAB_FONT),
                     ]
                 ],
                 expand_x=True,
@@ -563,11 +686,8 @@ def make_flash_view():
 
 def refresh_manual(window: sg.Window):
     brand = window["-BRAND-"].get() or "Google"
-
     typed = window["-MODEL-"].get() or ""
-
     window["-SUGGEST-"].update(values=get_suggestions(brand, typed))
-
     window["-DL_VBMETA-"].update(visible=(brand == "Samsung"))
 
 
@@ -576,32 +696,37 @@ def clear_manual(window: sg.Window):
 
     window["-CODENAME_TXT-"].update("")
 
+    try:
+        connected = adb_connected_codename() or ""
+    except Exception:
+        connected = ""
+    window["-CODENAME_LINE-"].update(_format_codename_line(connected, ""))
+
     refresh_manual(window)
 
 
 def set_dl_ui(window: sg.Window, active: bool):
     window["-DL_ROM-"].update(disabled=active)
-
     window["-DL_VBMETA-"].update(disabled=active)
-
     window["-DL_RECOVERY-"].update(disabled=active)
-
     window["-MG_DL-"].update(disabled=active)
-
+    window["-ARCH_DL_ROM-"].update(disabled=active)
+    window["-ARCH_REFRESH-"].update(disabled=active)
+    window["-ARCH_BACK-"].update(disabled=active)
+    window["-ARCH_MODEL-"].update(disabled=active)
+    window["-ARCH_SUGGEST-"].update(disabled=active)
     window["-BACK-"].update(disabled=active)
-
     window["-BRAND-"].update(disabled=active)
-
     window["-MODEL-"].update(disabled=active)
-
     window["-SUGGEST-"].update(disabled=active)
-
     window["-PROG-"].update(visible=active)
-
+    window["-ARCH_PROG-"].update(visible=active)
     window["-CANCEL_DL-"].update(visible=active)
+    window["-ARCH_CANCEL_DL-"].update(visible=active)
 
     if not active:
         window["-PROG-"].update(current_count=0, max=100)
+        window["-ARCH_PROG-"].update(current_count=0, max=100)
 
 
 def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
@@ -1064,7 +1189,7 @@ def main():
     )
 
     window = sg.Window(
-        "LibreFlash alpha-3",
+        "LibreFlash alpha-4",
         [[main_col, download_col, flash_col]],
         size=(700, 460),
         element_justification="center",
@@ -1072,6 +1197,38 @@ def main():
     )
 
     refresh_manual(window)
+
+    ARCH_ALL_DEVICES: list[str] = []
+
+    def refresh_archive(window: sg.Window):
+        nonlocal ARCH_ALL_DEVICES
+        try:
+            devs = archive_devices()
+            ARCH_ALL_DEVICES = devs
+            window["-ARCH_SUGGEST-"].update(values=devs[:200])
+            window["-ARCH_MODEL-"].update("")
+            window["-ARCH_SELECTED_TXT-"].update("")
+            try:
+                connected = adb_connected_codename() or ""
+            except Exception:
+                connected = ""
+            window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, ""))
+        except Exception as e:
+            sg.popup(f"Failed to load archive devices.\n\n{e}")
+
+    def refresh_archive_suggestions(window: sg.Window):
+        typed = (window["-ARCH_MODEL-"].get() or "").strip().lower()
+        if not ARCH_ALL_DEVICES:
+            window["-ARCH_SUGGEST-"].update(values=[])
+            return
+        if not typed:
+            window["-ARCH_SUGGEST-"].update(values=ARCH_ALL_DEVICES[:200])
+            return
+        window["-ARCH_SUGGEST-"].update(
+            values=[d for d in ARCH_ALL_DEVICES if typed in d.lower()][:15]
+        )
+
+    refresh_archive(window)
 
     dl_stop = threading.Event()
 
@@ -1198,6 +1355,13 @@ def main():
 
             window["-PAGE_MAIN-"].update(visible=True)
 
+        elif event == "-ARCH_BACK-":
+            if dl_active:
+                sg.popup("Download is running. Cancel it first.")
+            else:
+                window["-PAGE_DOWNLOAD-"].update(visible=False)
+                window["-PAGE_MAIN-"].update(visible=True)
+
         elif event == "-BACK-":
             if dl_active:
                 sg.popup("Download is running. Cancel it first.")
@@ -1212,6 +1376,12 @@ def main():
 
             window["-CODENAME_TXT-"].update("")
 
+            try:
+                connected = adb_connected_codename() or ""
+            except Exception:
+                connected = ""
+            window["-CODENAME_LINE-"].update(_format_codename_line(connected, ""))
+
             refresh_manual(window)
 
         elif event == "-MODEL-":
@@ -1225,6 +1395,13 @@ def main():
                 CODENAME_BY_BRAND_MODEL.get((brand, model_exact), "")
             )
 
+            selected = CODENAME_BY_BRAND_MODEL.get((brand, model_exact), "")
+            try:
+                connected = adb_connected_codename() or ""
+            except Exception:
+                connected = ""
+            window["-CODENAME_LINE-"].update(_format_codename_line(connected, selected))
+
         elif event == "-SUGGEST-":
             brand = values["-BRAND-"]
 
@@ -1236,6 +1413,62 @@ def main():
                 window["-CODENAME_TXT-"].update(
                     CODENAME_BY_BRAND_MODEL.get((brand, picked), "")
                 )
+
+                selected = CODENAME_BY_BRAND_MODEL.get((brand, picked), "")
+                try:
+                    connected = adb_connected_codename() or ""
+                except Exception:
+                    connected = ""
+                window["-CODENAME_LINE-"].update(
+                    _format_codename_line(connected, selected)
+                )
+
+        elif event == "-ARCH_REFRESH-":
+            refresh_archive(window)
+
+        elif event == "-ARCH_MODEL-":
+            refresh_archive_suggestions(window)
+            picked_exact = (values.get("-ARCH_MODEL-") or "").strip()
+            window["-ARCH_SELECTED_TXT-"].update(
+                picked_exact if picked_exact in ARCH_ALL_DEVICES else ""
+            )
+            selected = picked_exact if picked_exact in ARCH_ALL_DEVICES else ""
+            try:
+                connected = adb_connected_codename() or ""
+            except Exception:
+                connected = ""
+            window["-ARCH_CODENAME_LINE-"].update(
+                _format_codename_line(connected, selected)
+            )
+
+        elif event == "-ARCH_SUGGEST-":
+            picked = (values.get("-ARCH_SUGGEST-") or [None])[0]
+            if picked:
+                window["-ARCH_MODEL-"].update(picked)
+                window["-ARCH_SELECTED_TXT-"].update(picked)
+                selected = picked
+                try:
+                    connected = adb_connected_codename() or ""
+                except Exception:
+                    connected = ""
+                window["-ARCH_CODENAME_LINE-"].update(
+                    _format_codename_line(connected, selected)
+                )
+
+        elif event == "-ARCH_DL_ROM-":
+            device = (values.get("-ARCH_MODEL-") or "").strip()
+            if not device:
+                sg.popup("Please type or select a device codename first.")
+            else:
+                try:
+                    b = latest_archive_build(device)
+                    start_download("Archive ROM ZIP", b["url"], b["filename"])
+                except Exception as e:
+                    sg.popup(f"Archive ROM download setup failed.\n\n{e}")
+
+        elif event == "-ARCH_CANCEL_DL-":
+            if dl_active:
+                dl_stop.set()
 
         elif event == "-DL_VBMETA-":
             brand, _model, codename = selected_brand_model_codename(values)
@@ -1320,9 +1553,11 @@ def main():
                 pct = int(done * 100 / total)
 
                 window["-PROG-"].update_bar(pct, max=100)
+                window["-ARCH_PROG-"].update_bar(pct, max=100)
 
             else:
                 window["-PROG-"].update_bar((done // (1024 * 1024)) % 100, max=100)
+                window["-ARCH_PROG-"].update_bar((done // (1024 * 1024)) % 100, max=100)
 
         elif event == "-DL_DONE-":
             dl_active = False
