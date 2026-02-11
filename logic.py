@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import threading
-from typing import List, Optional, Sequence, Tuple, Union, Callable
+from typing import List, Optional, Sequence, Tuple, Union, Callable, Any
 import subprocess
 
 import requests
@@ -72,6 +72,152 @@ def adb_reboot_download() -> Tuple[int, Optional[str], List[str]]:
 
 UA = "LineageOS Downloader FOSS"
 MIRRORBITS_FULL = "https://mirrorbits.lineageos.org/full"
+
+ARCHIVE_BASE = "https://lineage-archive.timschumi.net"
+ARCHIVE_BUILDS_API = f"{ARCHIVE_BASE}/api/builds"
+ARCHIVE_FILE_BASES = (
+    "https://b4.timschumi.net/lineage-archive",
+    "https://lineage-archive.timschumi.net",
+)
+
+
+
+def adb_getprop(prop: str) -> str:
+    """Return a single Android system property value via adb, or "" if unavailable."""
+    rc, last, _lines = run_stream_lastline(
+        ["adb", "shell", "getprop", prop],
+        print_live=False,
+    )
+    if rc != 0:
+        return ""
+
+    val = (last or "").strip()
+    if not val:
+        return ""
+
+    low = val.lower()
+    if low.startswith("error:"):
+        return ""
+    if "no devices" in low or "device offline" in low or "unauthorized" in low:
+        return ""
+    return val
+
+
+def adb_connected_codename() -> str:
+    """Best-effort connected device codename (single device), else ""."""
+    for prop in ("ro.build.product", "ro.product.device"):
+        v = adb_getprop(prop)
+        if v:
+            return v
+    return ""
+
+def archive_builds() -> list[dict]:
+    with _session() as s:
+        r = s.get(ARCHIVE_BUILDS_API, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+
+    if isinstance(j, dict) and "builds" in j:
+        j = j.get("builds")
+
+    if not isinstance(j, list):
+        raise RuntimeError("Unexpected archive API response")
+
+    return [x for x in j if isinstance(x, dict)]
+
+
+def archive_devices() -> list[str]:
+    builds = archive_builds()
+    return sorted(
+        {(b.get("device") or "").strip() for b in builds if (b.get("device") or "").strip()}
+    )
+
+
+_ARCH_DATE_RE = re.compile(r"-(\d{8})-")
+_ARCH_VER_RE = re.compile(r"^lineage-(\d+)\.(\d+)-")
+
+
+def _archive_date_from_filename(fn: str) -> int:
+    m = _ARCH_DATE_RE.search(fn or "")
+    if not m:
+        return 0
+    try:
+        return int(m.group(1))
+    except Exception:
+        return 0
+
+
+def _archive_version_from_filename(fn: str) -> tuple[int, int]:
+    m = _ARCH_VER_RE.match(fn or "")
+    if not m:
+        return (0, 0)
+    try:
+        return (int(m.group(1)), int(m.group(2)))
+    except Exception:
+        return (0, 0)
+
+
+def _archive_build_sort_key(b: dict) -> tuple[int, tuple[int, int], int]:
+    fn = (b.get("filename") or b.get("name") or "").strip()
+    date = _archive_date_from_filename(fn)
+    ver = _archive_version_from_filename(fn)
+
+    for k in ("datetime", "timestamp", "time"):
+        v = b.get(k)
+        if v is None:
+            continue
+        try:
+            if isinstance(v, str) and v.isdigit():
+                return (int(v), ver, date)
+            if isinstance(v, (int, float)):
+                return (int(v), ver, date)
+        except Exception:
+            pass
+
+    return (date, ver, 0)
+
+
+def _archive_candidate_urls(filename: str, build_id: object | None) -> list[str]:
+    urls: list[str] = []
+    fn = (filename or "").lstrip("/")
+    for base in ARCHIVE_FILE_BASES:
+        urls.append(f"{base}/{fn}")
+    if build_id is not None:
+        urls.append(f"{ARCHIVE_BASE}/build/{build_id}/download")
+    return urls
+
+
+def latest_archive_build(device: str, *, max_head_tries: int = 3) -> dict:
+    device = (device or "").strip()
+    if not device:
+        raise RuntimeError("Missing device")
+
+    builds = [
+        b for b in archive_builds() if (b.get("device") or "").strip() == device
+    ]
+    if not builds:
+        raise RuntimeError(f"No archive builds found for device='{device}'")
+
+    builds.sort(key=_archive_build_sort_key, reverse=True)
+
+    last_err: str | None = None
+    with _session() as s:
+        for b in builds[: max_head_tries or 3]:
+            filename = (b.get("filename") or b.get("name") or "").strip()
+            if not filename:
+                continue
+
+            build_id = b.get("id")
+            for url in _archive_candidate_urls(filename, build_id):
+                try:
+                    r = s.head(url, allow_redirects=True, timeout=20)
+                    if r.status_code < 400:
+                        return {"url": url, "filename": filename, "source": "archive", "raw": b}
+                    last_err = f"HTTP {r.status_code} for {url}"
+                except Exception as e:
+                    last_err = str(e)
+
+    raise RuntimeError(last_err or "Could not locate a downloadable archive URL")
 
 
 def _session() -> requests.Session:
