@@ -70,11 +70,10 @@ def check_dependencies_or_exit() -> None:
 
 
 def safe_connected_codename() -> str:
-                                                                       
+
     try:
         return (adb_connected_codename() or "").strip()
     except Exception:
-                                                                              
         return ""
 
 
@@ -190,7 +189,6 @@ def make_manual_tab():
                     justification="center",
                     expand_x=True,
                 ),
-                                                                                         
                 sg.Text("", key="-CODENAME_TXT-", visible=False, pad=(0, 0)),
             ]
         ],
@@ -304,7 +302,6 @@ def make_archive_tab():
                     justification="center",
                     expand_x=True,
                 ),
-                                                                                         
                 sg.Text("", key="-ARCH_SELECTED_TXT-", visible=False, pad=(0, 0)),
             ]
         ],
@@ -682,13 +679,12 @@ def clear_manual(window: sg.Window):
 
 
 def clear_archive(window: sg.Window):
-                                                                                     
+
     window["-ARCH_MODEL-"].update("")
     window["-ARCH_SELECTED_TXT-"].update("")
-                                                        
+
     connected = safe_connected_codename()
     window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, ""))
-
 
 
 def set_dl_ui(window: sg.Window, active: bool):
@@ -794,14 +790,27 @@ def _file_action_dialog(
     initial_folder: Path,
     start_label: str = "Start",
 ) -> Optional[str]:
-                                                                               
+
     layout = [
-        [sg.Text(title, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [
+            sg.Text(
+                title,
+                font=("Helvetica", 14, "bold"),
+                justification="center",
+                expand_x=True,
+            )
+        ],
         [sg.Text(instructions, justification="left", expand_x=True)],
         [sg.Text("Selected file:")],
-        [sg.Input("", key="-FILE-", expand_x=True, readonly=True), sg.Button("Choose…", key="-CHOOSE-")],
+        [
+            sg.Input("", key="-FILE-", expand_x=True, readonly=True),
+            sg.Button("Choose…", key="-CHOOSE-"),
+        ],
         [sg.VPush()],
-        [sg.Button(start_label, key="-START-", size=(10, 1)), sg.Button("Cancel", key="-CANCEL-", size=(10, 1))],
+        [
+            sg.Button(start_label, key="-START-", size=(10, 1)),
+            sg.Button("Cancel", key="-CANCEL-", size=(10, 1)),
+        ],
     ]
     win = sg.Window(title, layout, modal=True, finalize=True)
     picked = ""
@@ -834,6 +843,7 @@ def sideload_dialog(initial: Path) -> Optional[str]:
         start_label="Sideload",
     )
 
+
 def magisk_sideload_dialog(initial: Path) -> Optional[str]:
     return _file_action_dialog(
         title="Magisk (ZIP) sideload",
@@ -843,6 +853,7 @@ def magisk_sideload_dialog(initial: Path) -> Optional[str]:
         start_label="Sideload",
     )
 
+
 def flash_dialog(initial: Path) -> Optional[str]:
     return _file_action_dialog(
         title="Flash image",
@@ -851,6 +862,7 @@ def flash_dialog(initial: Path) -> Optional[str]:
         initial_folder=initial,
         start_label="Flash",
     )
+
 
 def _do_fb_reboot(choice: str):
     if choice == "Reboot device (adb)":
@@ -982,12 +994,12 @@ def main():
 
     refresh_archive(window)
 
-                                                                       
     dev_stop = threading.Event()
     last_seen = {"codename": None}
 
     def dev_poller():
         import time as _t
+
         while not dev_stop.is_set():
             c = safe_connected_codename()
             if c != last_seen["codename"]:
@@ -996,7 +1008,6 @@ def main():
             _t.sleep(1.0)
 
     threading.Thread(target=dev_poller, daemon=True).start()
-
 
     dl_stop = threading.Event()
 
@@ -1071,13 +1082,16 @@ def main():
 
         if event == "-DEV_CODENAME-":
             c = (values.get("-DEV_CODENAME-", {}) or {}).get("codename", "")
-                                                     
-            selected_official = (values.get("-CODENAME_TXT-") or "").strip()
-            window["-CODENAME_LINE-"].update(_format_codename_line(c, selected_official))
-                                          
-            selected_arch = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
-            window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(c, selected_arch))
 
+            selected_official = (values.get("-CODENAME_TXT-") or "").strip()
+            window["-CODENAME_LINE-"].update(
+                _format_codename_line(c, selected_official)
+            )
+
+            selected_arch = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
+            window["-ARCH_CODENAME_LINE-"].update(
+                _format_codename_line(c, selected_arch)
+            )
 
         if event == "-FB_FLASH_RECOVERY-":
             flash_dialog("Fastboot", "Flash recovery")
@@ -1193,18 +1207,22 @@ def main():
                     _format_codename_line(connected, selected)
                 )
 
-
         elif event == "-DL_TABS-":
-                                                                                               
             current_tab = values.get("-DL_TABS-")
-            if isinstance(current_tab, str) and current_tab.lower().startswith("unofficial"):
+            if isinstance(current_tab, str) and current_tab.lower().startswith(
+                "unofficial"
+            ):
                 connected = safe_connected_codename()
                 selected = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
-                window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, selected))
+                window["-ARCH_CODENAME_LINE-"].update(
+                    _format_codename_line(connected, selected)
+                )
             else:
                 connected = safe_connected_codename()
                 selected = (values.get("-CODENAME_TXT-") or "").strip()
-                window["-CODENAME_LINE-"].update(_format_codename_line(connected, selected))
+                window["-CODENAME_LINE-"].update(
+                    _format_codename_line(connected, selected)
+                )
 
         elif event == "-ARCH_REFRESH-":
             refresh_archive(window)
