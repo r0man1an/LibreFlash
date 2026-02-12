@@ -19,6 +19,7 @@ This project is currently **alpha software**. Most features work, but rough edge
 
 * Download official LineageOS ROM ZIPs and recoveries for many devices
   (the list is still growing and does not include every officially supported device yet)
+* Download legacy ROMs from the [LineageOS Archive](https://lineage-archive.timschumi.net/#9100)
 
 ### Flash files
 
@@ -95,13 +96,12 @@ LibreFlash is provided as-is, without warranty of any kind.
 
 ## Project status
 
-* Version: v0.0.1-alpha3
+* Version: v0.0.1-alpha4
 * Device download list is incomplete
 * Flashing works for all devices if correct files are supplied
 
 Planned features:
 * Expanded device list for downloads
-* Support for unofficial-supported devices
 * Device status panel
 * SHA256 verification
 * Resuming partial downloads (.part)
