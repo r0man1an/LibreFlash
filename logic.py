@@ -14,6 +14,60 @@ from urllib3.util.retry import Retry
 
 Cmd = Union[str, Sequence[str]]
 
+@dataclass
+class CommandResult:
+    """Result of a command execution."""
+
+    rc: int
+    lines: List[str]
+
+    @property
+    def last_line(self) -> Optional[str]:
+        return self.lines[-1] if self.lines else None
+
+
+def run_stream(
+    cmd: Cmd,
+    *,
+    cwd: Optional[str] = None,
+    env: Optional[dict] = None,
+    shell: bool = False,
+    on_line: Optional[Callable[[str], None]] = None,
+) -> CommandResult:
+    """Run a command with stdout/stderr merged and optionally stream lines to a callback.
+
+    Best-effort: missing executables / OS errors are returned as rc=127 with a captured error line.
+    """
+    lines: List[str] = []
+    try:
+        p = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as e:
+        msg = f"ERROR: {e}"
+        lines.append(msg)
+        if on_line:
+            on_line(msg)
+        return CommandResult(rc=127, lines=lines)
+
+    assert p.stdout is not None
+    for raw in p.stdout:
+        line = raw.rstrip("\n")
+        lines.append(line)
+        if on_line:
+            on_line(line)
+
+    rc = p.wait()
+    return CommandResult(rc=rc, lines=lines)
+
+
 
 def run_stream_lastline(
     cmd: Cmd,
@@ -24,35 +78,20 @@ def run_stream_lastline(
     print_live: bool = True,
     check: bool = False,
 ) -> Tuple[int, Optional[str], List[str]]:
-    p = subprocess.Popen(
+    """Backward-compatible wrapper returning (rc, last_line, lines)."""
+
+    res = run_stream(
         cmd,
         cwd=cwd,
         env=env,
         shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        on_line=(lambda ln: print(ln, flush=True)) if print_live else None,
     )
 
-    last_line: Optional[str] = None
-    lines: List[str] = []
+    if check and res.rc != 0:
+        raise subprocess.CalledProcessError(res.rc, cmd, output="\n".join(res.lines))
 
-    assert p.stdout is not None
-    for line in p.stdout:
-        line = line.rstrip("\n")
-        lines.append(line)
-        last_line = line
-        if print_live:
-            print(line, flush=True)
-
-    rc = p.wait()
-
-    if check and rc != 0:
-        raise subprocess.CalledProcessError(rc, cmd, output="\n".join(lines))
-
-    return rc, last_line, lines
-
+    return res.rc, res.last_line, res.lines
 
 def adb_reboot_system() -> Tuple[int, Optional[str], List[str]]:
     return run_stream_lastline(["adb", "reboot"], print_live=False)
@@ -80,6 +119,39 @@ ARCHIVE_FILE_BASES = (
     "https://lineage-archive.timschumi.net",
 )
 
+
+
+# Flash image classification (moved from UI so rules live in logic)
+_DENY_PREFIXES: Tuple[str, ...] = (
+    "vendor_boot",
+    "init_boot",
+    "vbmeta",
+    "dtbo",
+    "super",
+    "bootloader",
+)
+
+def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
+    """Return (partition, normalized_name) for an image filename, or (None, None)."""
+    base = (filename or "").strip().lower()
+    if not base:
+        return None, None
+
+    if base.endswith(".img"):
+        for pfx in _DENY_PREFIXES:
+            if base.startswith(pfx):
+                return None, None
+
+    if base == "boot.img" or base.endswith("-boot.img"):
+        return "boot", "boot.img"
+
+    if base == "recovery.img" or base.endswith("-recovery.img"):
+        return "recovery", "recovery.img"
+
+    if base.endswith(".img") and "recovery" in base:
+        return "recovery", "recovery.img"
+
+    return None, None
 
 
 def adb_getprop(prop: str) -> str:

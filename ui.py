@@ -13,6 +13,7 @@ from logic import (
     CODENAME_BY_BRAND_MODEL,
     DownloadCallbacks,
     DownloadProgress,
+    classify_flash_image,
     adb_reboot_fastboot,
     adb_reboot_recovery,
     adb_reboot_system,
@@ -68,37 +69,13 @@ def check_dependencies_or_exit() -> None:
         )
 
 
-_DENY_PREFIXES = (
-    "vendor_boot",
-    "init_boot",
-    "vbmeta",
-    "dtbo",
-    "super",
-    "bootloader",
-)
-
-
-def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
-    base = (filename or "").strip().lower()
-
-    if not base:
-        return None, None
-
-    if base.endswith(".img"):
-        for pfx in _DENY_PREFIXES:
-            if base.startswith(pfx) and base.endswith(".img"):
-                return None, None
-
-    if base == "boot.img" or base.endswith("-boot.img"):
-        return "boot", "boot.img"
-
-    if base == "recovery.img" or base.endswith("-recovery.img"):
-        return "recovery", "recovery.img"
-
-    if base.endswith(".img") and "recovery" in base:
-        return "recovery", "recovery.img"
-
-    return None, None
+def safe_connected_codename() -> str:
+    """Return connected device codename, best-effort (never raises)."""
+    try:
+        return (adb_connected_codename() or "").strip()
+    except Exception:
+        # Logic should already be best-effort, but UI should never crash here.
+        return ""
 
 
 def _format_codename_line(connected: str, selected: str) -> str:
@@ -424,6 +401,8 @@ def make_download_view():
                         sg.Tab("Unofficial", archive_tab, font=TAB_FONT),
                     ]
                 ],
+                key="-DL_TABS-",
+                enable_events=True,
                 expand_x=True,
                 expand_y=True,
             )
@@ -696,13 +675,20 @@ def clear_manual(window: sg.Window):
 
     window["-CODENAME_TXT-"].update("")
 
-    try:
-        connected = adb_connected_codename() or ""
-    except Exception:
-        connected = ""
+    connected = safe_connected_codename()
     window["-CODENAME_LINE-"].update(_format_codename_line(connected, ""))
 
     refresh_manual(window)
+
+
+def clear_archive(window: sg.Window):
+    """Reset the archive tab to a neutral state (like the official downloads tab)."""
+    window["-ARCH_MODEL-"].update("")
+    window["-ARCH_SELECTED_TXT-"].update("")
+    # keep current suggestion list; just clear selection
+    connected = safe_connected_codename()
+    window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, ""))
+
 
 
 def set_dl_ui(window: sg.Window, active: bool):
@@ -753,7 +739,7 @@ def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
             assert p.stdout is not None
 
             for line in p.stdout:
-                out_win.write_event_value("-CMD_LINE-", line.rstrip("\\n"))
+                out_win.write_event_value("-CMD_LINE-", line.rstrip("\n"))
 
             rc = p.wait()
 
@@ -800,302 +786,71 @@ def run_live_cmd(title: str, cmd: list[str]) -> tuple[int, list[str]]:
     return rc, lines
 
 
-def sideload_dialog(action_label: str = "ADB Sideload ROM zip"):
-    downloads_dir = Path.home() / "Downloads"
-
-    downloads_dir.mkdir(exist_ok=True)
-
+def _file_action_dialog(
+    *,
+    title: str,
+    instructions: str,
+    file_types: list[tuple[str, str]],
+    initial_folder: Path,
+    start_label: str = "Start",
+) -> Optional[str]:
+    """UI-only generic file picker dialog returning the chosen path or None."""
     layout = [
-        [
-            sg.Text(
-                action_label,
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
-        [
-            sg.Text(
-                "Put your device into Recovery and enable 'ADB sideload', then select a .zip to sideload.",
-                justification="left",
-                expand_x=True,
-            )
-        ],
-        [sg.Text("Selected file:", pad=(0, 6))],
-        [
-            sg.Input(key="-SIDELOAD_FILE-", expand_x=True, readonly=True),
-            sg.Button("Choose…", key="-SIDELOAD_CHOOSE-"),
-        ],
+        [sg.Text(title, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
+        [sg.Text(instructions, justification="left", expand_x=True)],
+        [sg.Text("Selected file:")],
+        [sg.Input("", key="-FILE-", expand_x=True, readonly=True), sg.Button("Choose…", key="-CHOOSE-")],
         [sg.VPush()],
-        [
-            sg.Button("Start", key="-SIDELOAD_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-SIDELOAD_CANCEL-", size=(10, 1)),
-        ],
+        [sg.Button(start_label, key="-START-", size=(10, 1)), sg.Button("Cancel", key="-CANCEL-", size=(10, 1))],
     ]
+    win = sg.Window(title, layout, modal=True, finalize=True)
+    picked = ""
+    while True:
+        ev, _ = win.read()
+        if ev in (sg.WINDOW_CLOSED, "-CANCEL-"):
+            win.close()
+            return None
+        if ev == "-CHOOSE-":
+            p = sg.popup_get_file(
+                "Choose file",
+                no_window=True,
+                initial_folder=str(initial_folder),
+                file_types=tuple(file_types),
+            )
+            if p:
+                picked = p
+                win["-FILE-"].update(picked)
+        if ev == "-START-":
+            win.close()
+            return picked or None
 
-    dlg = sg.Window(
-        action_label, layout, modal=True, finalize=True, element_justification="center"
+
+def sideload_dialog(initial: Path) -> Optional[str]:
+    return _file_action_dialog(
+        title="ADB sideload",
+        instructions="Choose a ZIP to sideload via recovery.",
+        file_types=[("ZIP files", "*.zip"), ("All files", "*.*")],
+        initial_folder=initial,
+        start_label="Sideload",
     )
 
-    picked_path = ""
-
-    while True:
-        ev, _vals = dlg.read()
-
-        if ev in (sg.WINDOW_CLOSED, "-SIDELOAD_CANCEL-"):
-            dlg.close()
-
-            break
-
-        if ev == "-SIDELOAD_CHOOSE-":
-            p = sg.popup_get_file(
-                "Select ZIP to sideload",
-                no_window=True,
-                initial_folder=str(downloads_dir),
-                file_types=(("ZIP files", "*.zip"),),
-            )
-
-            if p:
-                picked_path = p
-
-                dlg["-SIDELOAD_FILE-"].update(picked_path)
-
-        if ev == "-SIDELOAD_START-":
-            if not picked_path:
-                sg.popup("Please choose a .zip file first.")
-
-                continue
-
-            dlg.close()
-
-            run_live_cmd("ADB sideload", ["adb", "sideload", picked_path])
-
-            return
-
-
-def magisk_sideload_dialog(action_label: str = "ADB Sideload Magisk"):
-    downloads_dir = Path.home() / "Downloads"
-
-    downloads_dir.mkdir(exist_ok=True)
-
-    layout = [
-        [
-            sg.Text(
-                action_label,
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
-        [
-            sg.Text(
-                "Put your device into Recovery and enable 'ADB sideload'.\n"
-                "Select a Magisk .apk. It will be copied to a .zip and then sideloaded.",
-                justification="left",
-                expand_x=True,
-            )
-        ],
-        [sg.Text("Selected file:", pad=(0, 6))],
-        [
-            sg.Input(key="-MAGISK_FILE-", expand_x=True, readonly=True),
-            sg.Button("Choose…", key="-MAGISK_CHOOSE-"),
-        ],
-        [sg.VPush()],
-        [
-            sg.Button("Start", key="-MAGISK_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-MAGISK_CANCEL-", size=(10, 1)),
-        ],
-    ]
-
-    dlg = sg.Window(
-        action_label, layout, modal=True, finalize=True, element_justification="center"
+def magisk_sideload_dialog(initial: Path) -> Optional[str]:
+    return _file_action_dialog(
+        title="Magisk (ZIP) sideload",
+        instructions="Choose a Magisk ZIP to sideload via recovery.",
+        file_types=[("ZIP files", "*.zip"), ("All files", "*.*")],
+        initial_folder=initial,
+        start_label="Sideload",
     )
 
-    picked_path = ""
-
-    while True:
-        ev, _vals = dlg.read()
-
-        if ev in (sg.WINDOW_CLOSED, "-MAGISK_CANCEL-"):
-            dlg.close()
-
-            break
-
-        if ev == "-MAGISK_CHOOSE-":
-            downloads_dir = Path.home() / "Downloads"
-            p = sg.popup_get_file(
-                "Select Magisk APK",
-                no_window=True,
-                initial_folder=str(downloads_dir),
-                file_types=(("APK files", "*.apk"),),
-            )
-
-            if p:
-                picked_path = p
-
-                dlg["-MAGISK_FILE-"].update(picked_path)
-
-        if ev == "-MAGISK_START-":
-            if not picked_path:
-                sg.popup("Please choose a .apk file first.")
-
-                continue
-
-            src = Path(picked_path)
-
-            if src.suffix.lower() != ".apk":
-                sg.popup("Selected file is not an .apk.")
-
-                continue
-
-            zip_path = downloads_dir / src.with_suffix(".zip").name
-
-            shutil.copyfile(src, zip_path)
-
-            dlg.close()
-
-            run_live_cmd("ADB sideload", ["adb", "sideload", str(zip_path)])
-
-            return
-
-
-def flash_dialog(method_label: str, action_label: str):
-    downloads_dir = Path.home() / "Downloads"
-
-    downloads_dir.mkdir(exist_ok=True)
-
-    layout = [
-        [
-            sg.Text(
-                f"{method_label}: {action_label}",
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
-        [
-            sg.Text(
-                "Make sure the device is in the correct mode before flashing.",
-                justification="left",
-                expand_x=True,
-            )
-        ],
-        [sg.Text("Selected file:", pad=(0, 6))],
-        [
-            sg.Input(key="-FLASH_FILE-", expand_x=True, readonly=True),
-            sg.Button("Choose…", key="-FLASH_CHOOSE-"),
-        ],
-        [sg.VPush()],
-        [
-            sg.Button("Start", key="-FLASH_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-FLASH_CANCEL-", size=(10, 1)),
-        ],
-    ]
-
-    dlg = sg.Window(
-        action_label, layout, modal=True, finalize=True, element_justification="center"
+def flash_dialog(initial: Path) -> Optional[str]:
+    return _file_action_dialog(
+        title="Flash image",
+        instructions="Choose a recovery.img or boot.img to flash.",
+        file_types=[("Image files", "*.img"), ("All files", "*.*")],
+        initial_folder=initial,
+        start_label="Flash",
     )
-
-    picked_path = ""
-
-    while True:
-        ev, _vals = dlg.read()
-
-        if ev in (sg.WINDOW_CLOSED, "-FLASH_CANCEL-"):
-            dlg.close()
-
-            break
-
-        if ev == "-FLASH_CHOOSE-":
-            p = sg.popup_get_file(
-                "Select image",
-                no_window=True,
-                initial_folder=str(downloads_dir),
-                file_types=(("IMG files", "*.img"),),
-            )
-
-            if p:
-                picked_path = p
-
-                dlg["-FLASH_FILE-"].update(picked_path)
-
-        if ev == "-FLASH_START-":
-            if not picked_path:
-                sg.popup("Please choose an image file first.")
-
-                continue
-
-            file_name = Path(picked_path).name
-
-            target_part, recognized = classify_flash_image(file_name)
-
-            if not target_part:
-                sg.popup(
-                    "Unsupported or unsafe image selected.\n\nOnly BOOT/RECOVERY images are allowed.",
-                    title="Blocked file",
-                )
-
-                continue
-
-            if method_label == "Fastboot":
-                where_txt = f"It was recognized as {recognized} and will be flashed to {target_part}."
-
-            else:
-                where_txt = f"It was recognized as {recognized} and will be flashed as RECOVERY."
-
-            confirm = sg.popup_yes_no(
-                f"Method: {method_label}\n"
-                f"Action: {action_label}\n"
-                f"File: {picked_path}\n\n"
-                f"{where_txt}",
-                title="Confirm flashing",
-            )
-
-            if confirm != "Yes":
-                continue
-
-            if method_label == "Fastboot":
-                cmd = ["pkexec", "fastboot", "flash", target_part, picked_path]
-
-                out_title = f"Fastboot flashing {target_part}"
-
-            else:
-                cmd = ["heimdall", "flash", "--RECOVERY", picked_path, "--no-reboot"]
-
-                out_title = "Heimdall flashing RECOVERY"
-
-            dlg.close()
-
-            rc, _lines = run_live_cmd(out_title, cmd)
-
-            if rc == 0:
-                if method_label == "Fastboot":
-                    choice = sg.popup(
-                        "Flashing done.",
-                        title="Done",
-                        custom_text=("Reboot to recovery", "Close"),
-                    )
-
-                    if choice == "Reboot to recovery":
-                        run_live_cmd(
-                            "Fastboot reboot recovery",
-                            ["pkexec", "fastboot", "reboot", "recovery"],
-                        )
-
-                else:
-                    sg.popup(
-                        "Flashing done.\n\nHeimdall was run with --no-reboot.\nReboot manually into recovery.",
-                        title="Done",
-                    )
-
-            else:
-                sg.popup(
-                    f"Flashing failed (rc={rc}).\n\nCheck the output window.",
-                    title="Error",
-                )
-
-            return
-
 
 def _do_fb_reboot(choice: str):
     if choice == "Reboot device (adb)":
@@ -1208,10 +963,7 @@ def main():
             window["-ARCH_SUGGEST-"].update(values=devs[:200])
             window["-ARCH_MODEL-"].update("")
             window["-ARCH_SELECTED_TXT-"].update("")
-            try:
-                connected = adb_connected_codename() or ""
-            except Exception:
-                connected = ""
+            connected = safe_connected_codename()
             window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, ""))
         except Exception as e:
             sg.popup(f"Failed to load archive devices.\n\n{e}")
@@ -1229,6 +981,22 @@ def main():
         )
 
     refresh_archive(window)
+
+    # Poll adb-connected device codename and update UI when it changes.
+    dev_stop = threading.Event()
+    last_seen = {"codename": None}
+
+    def dev_poller():
+        import time as _t
+        while not dev_stop.is_set():
+            c = safe_connected_codename()
+            if c != last_seen["codename"]:
+                last_seen["codename"] = c
+                window.write_event_value("-DEV_CODENAME-", {"codename": c})
+            _t.sleep(1.0)
+
+    threading.Thread(target=dev_poller, daemon=True).start()
+
 
     dl_stop = threading.Event()
 
@@ -1301,6 +1069,16 @@ def main():
         if event == sg.WINDOW_CLOSED:
             break
 
+        if event == "-DEV_CODENAME-":
+            c = (values.get("-DEV_CODENAME-", {}) or {}).get("codename", "")
+            # Update official downloads codename line
+            selected_official = (values.get("-CODENAME_TXT-") or "").strip()
+            window["-CODENAME_LINE-"].update(_format_codename_line(c, selected_official))
+            # Update archive codename line
+            selected_arch = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
+            window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(c, selected_arch))
+
+
         if event == "-FB_FLASH_RECOVERY-":
             flash_dialog("Fastboot", "Flash recovery")
 
@@ -1342,6 +1120,7 @@ def main():
             window["-PAGE_FLASH-"].update(visible=False)
 
             clear_manual(window)
+            clear_archive(window)
 
         elif event == "-FLASH-":
             window["-PAGE_MAIN-"].update(visible=False)
@@ -1376,10 +1155,7 @@ def main():
 
             window["-CODENAME_TXT-"].update("")
 
-            try:
-                connected = adb_connected_codename() or ""
-            except Exception:
-                connected = ""
+            connected = safe_connected_codename()
             window["-CODENAME_LINE-"].update(_format_codename_line(connected, ""))
 
             refresh_manual(window)
@@ -1396,10 +1172,7 @@ def main():
             )
 
             selected = CODENAME_BY_BRAND_MODEL.get((brand, model_exact), "")
-            try:
-                connected = adb_connected_codename() or ""
-            except Exception:
-                connected = ""
+            connected = safe_connected_codename()
             window["-CODENAME_LINE-"].update(_format_codename_line(connected, selected))
 
         elif event == "-SUGGEST-":
@@ -1415,13 +1188,23 @@ def main():
                 )
 
                 selected = CODENAME_BY_BRAND_MODEL.get((brand, picked), "")
-                try:
-                    connected = adb_connected_codename() or ""
-                except Exception:
-                    connected = ""
+                connected = safe_connected_codename()
                 window["-CODENAME_LINE-"].update(
                     _format_codename_line(connected, selected)
                 )
+
+
+        elif event == "-DL_TABS-":
+            # When switching to the archive tab, refresh the connected device line immediately.
+            current_tab = values.get("-DL_TABS-")
+            if isinstance(current_tab, str) and current_tab.lower().startswith("unofficial"):
+                connected = safe_connected_codename()
+                selected = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
+                window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, selected))
+            else:
+                connected = safe_connected_codename()
+                selected = (values.get("-CODENAME_TXT-") or "").strip()
+                window["-CODENAME_LINE-"].update(_format_codename_line(connected, selected))
 
         elif event == "-ARCH_REFRESH-":
             refresh_archive(window)
@@ -1433,10 +1216,7 @@ def main():
                 picked_exact if picked_exact in ARCH_ALL_DEVICES else ""
             )
             selected = picked_exact if picked_exact in ARCH_ALL_DEVICES else ""
-            try:
-                connected = adb_connected_codename() or ""
-            except Exception:
-                connected = ""
+            connected = safe_connected_codename()
             window["-ARCH_CODENAME_LINE-"].update(
                 _format_codename_line(connected, selected)
             )
@@ -1447,10 +1227,7 @@ def main():
                 window["-ARCH_MODEL-"].update(picked)
                 window["-ARCH_SELECTED_TXT-"].update(picked)
                 selected = picked
-                try:
-                    connected = adb_connected_codename() or ""
-                except Exception:
-                    connected = ""
+                connected = safe_connected_codename()
                 window["-ARCH_CODENAME_LINE-"].update(
                     _format_codename_line(connected, selected)
                 )
@@ -1639,116 +1416,19 @@ def main():
                     "Bootloader lock", ["pkexec", "fastboot", "flashing", "lock"]
                 )
 
+    dev_stop.set()
+
     window.close()
 
 
-def vbmeta_flash_dialog(action_label: str = "Flash VBMETA (Heimdall)"):
-    downloads_dir = Path.home() / "Downloads"
-
-    downloads_dir.mkdir(exist_ok=True)
-
-    layout = [
-        [
-            sg.Text(
-                action_label,
-                font=("Helvetica", 14, "bold"),
-                justification="center",
-                expand_x=True,
-            )
-        ],
-        [
-            sg.Text(
-                "Put your Samsung device into Download Mode.\n"
-                "Select a vbmeta.img to flash using Heimdall.\n\n"
-                "⚠ Flashing VBMETA incorrectly can brick your device.",
-                justification="left",
-                expand_x=True,
-            )
-        ],
-        [sg.Text("Selected file:", pad=(0, 6))],
-        [
-            sg.Input(key="-VBMETA_FILE-", expand_x=True, readonly=True),
-            sg.Button("Choose…", key="-VBMETA_CHOOSE-"),
-        ],
-        [sg.VPush()],
-        [
-            sg.Button("Start", key="-VBMETA_START-", size=(10, 1)),
-            sg.Button("Cancel", key="-VBMETA_CANCEL-", size=(10, 1)),
-        ],
-    ]
-
-    dlg = sg.Window(
-        action_label, layout, modal=True, finalize=True, element_justification="center"
+def vbmeta_flash_dialog(initial: Path) -> Optional[str]:
+    return _file_action_dialog(
+        title="Flash vbmeta image",
+        instructions="Choose a vbmeta*.img to flash.",
+        file_types=[("Image files", "*.img"), ("All files", "*.*")],
+        initial_folder=initial,
+        start_label="Flash",
     )
-
-    picked_path = ""
-
-    while True:
-        ev, _vals = dlg.read()
-
-        if ev in (sg.WINDOW_CLOSED, "-VBMETA_CANCEL-"):
-            dlg.close()
-
-            break
-
-        if ev == "-VBMETA_CHOOSE-":
-            p = sg.popup_get_file(
-                "Select VBMETA image",
-                no_window=True,
-                initial_folder=str(downloads_dir),
-                file_types=(("IMG files", "*.img"),),
-            )
-
-            if p:
-                picked_path = p
-
-                dlg["-VBMETA_FILE-"].update(picked_path)
-
-        if ev == "-VBMETA_START-":
-            if not picked_path:
-                sg.popup("Please choose a vbmeta.img file first.")
-
-                continue
-
-            fname = Path(picked_path).name.lower()
-
-            if "vbmeta" not in fname:
-                confirm = sg.popup_yes_no(
-                    "The selected file does not look like a VBMETA image.\n\nFlash anyway?",
-                    title="Confirm VBMETA flash",
-                )
-
-                if confirm != "Yes":
-                    continue
-
-            confirm = sg.popup_yes_no(
-                f"About to flash VBMETA via Heimdall:\n\n{picked_path}\n\nProceed?",
-                title="Confirm flashing",
-            )
-
-            if confirm != "Yes":
-                continue
-
-            dlg.close()
-
-            rc, _lines = run_live_cmd(
-                "Heimdall flashing VBMETA",
-                ["heimdall", "flash", "--VBMETA", picked_path, "--no-reboot"],
-            )
-
-            if rc == 0:
-                sg.popup(
-                    "VBMETA flashed successfully.\n\nHeimdall was run with --no-reboot.\nReboot manually.",
-                    title="Done",
-                )
-
-            else:
-                sg.popup(
-                    f"VBMETA flashing failed (rc={rc}).\n\nCheck the output window for details.",
-                    title="Error",
-                )
-
-            return
 
 
 if __name__ == "__main__":
