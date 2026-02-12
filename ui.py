@@ -70,11 +70,11 @@ def check_dependencies_or_exit() -> None:
 
 
 def safe_connected_codename() -> str:
-    """Return connected device codename, best-effort (never raises)."""
+                                                                       
     try:
         return (adb_connected_codename() or "").strip()
     except Exception:
-        # Logic should already be best-effort, but UI should never crash here.
+                                                                              
         return ""
 
 
@@ -190,7 +190,7 @@ def make_manual_tab():
                     justification="center",
                     expand_x=True,
                 ),
-                # Hidden legacy element kept for compatibility with existing update calls
+                                                                                         
                 sg.Text("", key="-CODENAME_TXT-", visible=False, pad=(0, 0)),
             ]
         ],
@@ -304,7 +304,7 @@ def make_archive_tab():
                     justification="center",
                     expand_x=True,
                 ),
-                # Hidden legacy element kept for compatibility with existing update calls
+                                                                                         
                 sg.Text("", key="-ARCH_SELECTED_TXT-", visible=False, pad=(0, 0)),
             ]
         ],
@@ -682,10 +682,10 @@ def clear_manual(window: sg.Window):
 
 
 def clear_archive(window: sg.Window):
-    """Reset the archive tab to a neutral state (like the official downloads tab)."""
+                                                                                     
     window["-ARCH_MODEL-"].update("")
     window["-ARCH_SELECTED_TXT-"].update("")
-    # keep current suggestion list; just clear selection
+                                                        
     connected = safe_connected_codename()
     window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(connected, ""))
 
@@ -794,7 +794,7 @@ def _file_action_dialog(
     initial_folder: Path,
     start_label: str = "Start",
 ) -> Optional[str]:
-    """UI-only generic file picker dialog returning the chosen path or None."""
+                                                                               
     layout = [
         [sg.Text(title, font=("Helvetica", 14, "bold"), justification="center", expand_x=True)],
         [sg.Text(instructions, justification="left", expand_x=True)],
@@ -982,7 +982,7 @@ def main():
 
     refresh_archive(window)
 
-    # Poll adb-connected device codename and update UI when it changes.
+                                                                       
     dev_stop = threading.Event()
     last_seen = {"codename": None}
 
@@ -1071,10 +1071,10 @@ def main():
 
         if event == "-DEV_CODENAME-":
             c = (values.get("-DEV_CODENAME-", {}) or {}).get("codename", "")
-            # Update official downloads codename line
+                                                     
             selected_official = (values.get("-CODENAME_TXT-") or "").strip()
             window["-CODENAME_LINE-"].update(_format_codename_line(c, selected_official))
-            # Update archive codename line
+                                          
             selected_arch = (values.get("-ARCH_SELECTED_TXT-") or "").strip()
             window["-ARCH_CODENAME_LINE-"].update(_format_codename_line(c, selected_arch))
 
@@ -1195,7 +1195,7 @@ def main():
 
 
         elif event == "-DL_TABS-":
-            # When switching to the archive tab, refresh the connected device line immediately.
+                                                                                               
             current_tab = values.get("-DL_TABS-")
             if isinstance(current_tab, str) and current_tab.lower().startswith("unofficial"):
                 connected = safe_connected_codename()

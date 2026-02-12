@@ -1,4 +1,4 @@
-# logic.py
+          
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ Cmd = Union[str, Sequence[str]]
 
 @dataclass
 class CommandResult:
-    """Result of a command execution."""
+                                        
 
     rc: int
     lines: List[str]
@@ -34,10 +34,7 @@ def run_stream(
     shell: bool = False,
     on_line: Optional[Callable[[str], None]] = None,
 ) -> CommandResult:
-    """Run a command with stdout/stderr merged and optionally stream lines to a callback.
-
-    Best-effort: missing executables / OS errors are returned as rc=127 with a captured error line.
-    """
+           
     lines: List[str] = []
     try:
         p = subprocess.Popen(
@@ -78,7 +75,7 @@ def run_stream_lastline(
     print_live: bool = True,
     check: bool = False,
 ) -> Tuple[int, Optional[str], List[str]]:
-    """Backward-compatible wrapper returning (rc, last_line, lines)."""
+                                                                       
 
     res = run_stream(
         cmd,
@@ -121,7 +118,7 @@ ARCHIVE_FILE_BASES = (
 
 
 
-# Flash image classification (moved from UI so rules live in logic)
+                                                                   
 _DENY_PREFIXES: Tuple[str, ...] = (
     "vendor_boot",
     "init_boot",
@@ -132,7 +129,7 @@ _DENY_PREFIXES: Tuple[str, ...] = (
 )
 
 def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
-    """Return (partition, normalized_name) for an image filename, or (None, None)."""
+                                                                                     
     base = (filename or "").strip().lower()
     if not base:
         return None, None
@@ -155,7 +152,7 @@ def classify_flash_image(filename: str) -> tuple[Optional[str], Optional[str]]:
 
 
 def adb_getprop(prop: str) -> str:
-    """Return a single Android system property value via adb, or "" if unavailable."""
+                                                                                      
     rc, last, _lines = run_stream_lastline(
         ["adb", "shell", "getprop", prop],
         print_live=False,
@@ -176,7 +173,7 @@ def adb_getprop(prop: str) -> str:
 
 
 def adb_connected_codename() -> str:
-    """Best-effort connected device codename (single device), else ""."""
+                                                                         
     for prop in ("ro.build.product", "ro.product.device"):
         v = adb_getprop(prop)
         if v:
